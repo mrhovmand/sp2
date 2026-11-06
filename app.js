@@ -529,7 +529,7 @@ async function viewMenu(m) {
     <h2>Offline</h2>
     <div class="card"><div>Tegninger på telefonen: <b id="cCount">${cached} / ${total}</b></div>
       <progress id="cProg" max="${total}" value="${cached}"></progress>
-      <div class="btnrow"><button class="btn yellow" id="mHent">Hent alle tegninger (ca. 35 MB)</button></div>
+      <div class="btnrow"><button class="btn yellow" id="mHent">Hent alle tegninger (ca. 50 MB)</button></div>
       <div class="small muted">Gør det på wifi. Appen selv gemmes automatisk. ${esc(est)}${persisted ? " · Lagring er markeret som varig." : ""}</div></div>
     <h2>Overblik og rapport</h2>
     <div class="list">
@@ -588,7 +588,7 @@ async function downloadAll() {
   }
   await Promise.all([worker(), worker(), worker(), worker()]);
   downloading = false;
-  if (btn) { btn.disabled = false; btn.textContent = "Hent alle tegninger (ca. 35 MB)"; }
+  if (btn) { btn.disabled = false; btn.textContent = "Hent alle tegninger (ca. 50 MB)"; }
   toast(failed ? `${failed} tegninger kunne ikke hentes – prøv igen med bedre dækning` : "Alle tegninger er gemt på telefonen", 3500);
 }
 
