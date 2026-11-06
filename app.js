@@ -105,7 +105,22 @@ const unitsOn = (opgId, floor) => {
 const primaryFloor = (u) => u.f[0];
 const ovImg = (b) => `tegninger/${b}-2.png`;
 const SIG_IMG = "tegninger/signatur.png";
-const ALL_DRAWINGS = () => [...[...UNITS.values()].filter((u) => u.img).map((u) => u.img), ...BUILDINGS.map(ovImg), SIG_IMG];
+const PLANS = window.SP2_PLANS || [];
+const ALL_DRAWINGS = () => [...new Set([...[...UNITS.values()].filter((u) => u.img).map((u) => u.img), ...BUILDINGS.map(ovImg), SIG_IMG, ...PLANS.flatMap((p) => [p.img, p.full])])];
+// Etage-/kældertegninger for en opgang og etage
+const plansFor = (opgId, floor) => { const o = OPG.get(opgId); return o ? PLANS.filter((p) => p.b.includes(o.b) && p.f.includes(floor)) : []; };
+// Knap der åbner en tegning med kontekst (opgang/etage/bolig) til "Tegninger"-menuen i viseren
+function drawBtn(cls, label, d, ctx) {
+  return `<button class="${cls}" data-draw="${esc(d.src)}" data-dtitle="${esc(d.title)}"${d.full ? ` data-full="${esc(d.full)}"` : ""}${ctx.unit ? ` data-unit="${esc(ctx.unit)}"` : ""}${ctx.opg ? ` data-opg="${esc(ctx.opg)}"` : ""}${ctx.floor ? ` data-floor="${esc(ctx.floor)}"` : ""}>${label}</button>`;
+}
+const planDraw = (p) => ({ src: p.img, full: p.full, title: `${p.t} (${p.nr})` });
+// Bedste tegning for en bolig: boligtegning, ellers etageplan, ellers oversigtsplan
+function unitDraw(u) {
+  if (u.img) return { src: u.img, title: `${u.o} ${unitName(u)} – side ${u.id}` };
+  const p = plansFor(u.o, u.f[0])[0];
+  if (p) return planDraw(p);
+  return { src: ovImg(u.b), title: `Oversigtsplan ${u.b}` };
+}
 
 /* ---------------- Tilstand i hukommelsen ---------------- */
 let REGS = new Map(); // id -> reg
@@ -215,7 +230,7 @@ async function viewOpgang(m, opgId) {
     const s = statsUnits(us.filter((u) => primaryFloor(u) === f));
     const nb = us.filter((u) => u.real).length;
     h += `<button class="row" data-go="/o/${encodeURIComponent(opgId)}/e/${encodeURIComponent(f)}">
-      <div class="main"><div class="name">${esc(f)}</div><div class="sub">${nb ? `${nb} boliger` : "Ingen boliger på tegningerne"}${s.n ? ` · ${s.n} dåser` : ""}${f === "Tag" && TAG[opgId] ? " · har tagnoter" : ""}</div></div>
+      <div class="main"><div class="name">${esc(f)}</div><div class="sub">${nb ? `${nb} boliger` : "Ingen boliger på tegningerne"}${plansFor(opgId, f).length ? " · 📐 etageplan" : ""}${s.n ? ` · ${s.n} dåser` : ""}${f === "Tag" && TAG[opgId] ? " · har tagnoter" : ""}</div></div>
       ${s.dev ? `<span class="badge b-afv">${s.dev} afv.</span>` : ""}<span class="count ${s.n ? "has" : ""}">${s.n}</span><span class="chev">›</span></button>`;
   }
   h += `</div>${tagNoteHtml(opgId)}`;
@@ -237,7 +252,11 @@ function bindTagNote(opgId) {
 async function viewFloor(m, opgId, floor) {
   setTop(`${opgId} · ${floor}`, "Vælg bolig");
   const us = unitsOn(opgId, floor);
-  let h = `<div class="list">`;
+  const pl = plansFor(opgId, floor);
+  let h = pl.length
+    ? `<div class="list" style="margin-bottom:14px">${pl.map((p) => drawBtn("btn", `📐 ${esc(p.s)}`, planDraw(p), { opg: opgId, floor })).join("")}</div>`
+    : `<p class="small muted">Ingen etageplan for denne etage i appen endnu.</p>`;
+  h += `<div class="list">`;
   for (const u of us) {
     const s = stats(regsOf(u.id));
     const span = u.f.length > 1 && primaryFloor(u) !== floor ? ` · (registreres samlet, start ${primaryFloor(u)})` : "";
@@ -258,7 +277,7 @@ async function viewUnit(m, unitId) {
   setTop(`${u.o} · ${unitName(u)}`, u.real ? `Side ${u.id} · ${u.k}` : u.f[0]);
   const regs = regsOf(unitId);
   let h = `<div class="btnrow"><button class="btn primary" data-go="/d/new/${encodeURIComponent(unitId)}">＋ Ny dåse</button></div>
-    <div class="btnrow"><button class="btn" data-draw="${u.img || ovImg(u.b)}" data-dtitle="${esc(u.real ? `${u.o} ${unitName(u)} – side ${u.id}` : `Oversigtsplan ${u.b}`)}" data-unit="${esc(u.id)}">📐 ${u.real ? "Tegning" : "Oversigtsplan"}</button></div>`;
+    <div class="btnrow">${drawBtn("btn", "📐 Tegning", unitDraw(u), { unit: u.id })}</div>`;
   if (u.real) {
     h += `<div class="card"><div><b>Navn:</b> ${esc(unitName(u))} ${isProposed(u) ? `<span class="badge b-prop">foreslået</span>` : ""}</div>
       <div class="small muted">Tegningen viser ikke tv./th. – tjek på stedet og ret navnet hvis det er forkert.</div>
@@ -345,7 +364,7 @@ async function viewReg(m, idOrNew, unitArg) {
     <div class="thumbs" id="thumbs"></div>
     <div class="btnrow">
       <button class="btn yellow" id="bPhoto">📷 Tilføj billede</button>
-      <button class="btn" data-draw="${u.img || ovImg(u.b)}" data-dtitle="${esc(u.real ? `${u.o} ${unitName(u)} – side ${u.id}` : `Oversigtsplan ${u.b}`)}" data-unit="${esc(u.id)}">📐 Tegning</button>
+      ${drawBtn("btn", "📐 Tegning", unitDraw(u), { unit: u.id })}
     </div>
     <input type="file" id="fFile" accept="image/*" capture="environment" hidden>
     <div id="photoBusy" class="small" hidden><span class="spinner"></span> Komprimerer billede …</div>
@@ -510,7 +529,7 @@ async function viewMenu(m) {
     <h2>Offline</h2>
     <div class="card"><div>Tegninger på telefonen: <b id="cCount">${cached} / ${total}</b></div>
       <progress id="cProg" max="${total}" value="${cached}"></progress>
-      <div class="btnrow"><button class="btn yellow" id="mHent">Hent alle tegninger (ca. 30 MB)</button></div>
+      <div class="btnrow"><button class="btn yellow" id="mHent">Hent alle tegninger (ca. 35 MB)</button></div>
       <div class="small muted">Gør det på wifi. Appen selv gemmes automatisk. ${esc(est)}${persisted ? " · Lagring er markeret som varig." : ""}</div></div>
     <h2>Overblik og rapport</h2>
     <div class="list">
@@ -569,25 +588,41 @@ async function downloadAll() {
   }
   await Promise.all([worker(), worker(), worker(), worker()]);
   downloading = false;
-  if (btn) { btn.disabled = false; btn.textContent = "Hent alle tegninger (ca. 30 MB)"; }
+  if (btn) { btn.disabled = false; btn.textContent = "Hent alle tegninger (ca. 35 MB)"; }
   toast(failed ? `${failed} tegninger kunne ikke hentes – prøv igen med bedre dækning` : "Alle tegninger er gemt på telefonen", 3500);
 }
 
 /* ---------------- Tegningsviser (pinch-zoom på canvas = altid skarp) ---------------- */
-const V = { img: null, mip: null, s: 1, tx: 0, ty: 0, rot: 0, pts: new Map(), raf: 0, lastTap: 0, unit: null, cur: null };
+const V = { img: null, mip: null, s: 1, tx: 0, ty: 0, rot: 0, pts: new Map(), raf: 0, lastTap: 0, ctx: {}, base: null, cur: null };
 document.addEventListener("click", (e) => {
   const d = e.target.closest("[data-draw]");
-  if (d) { e.preventDefault(); openDrawing(d.dataset.draw, d.dataset.dtitle, d.dataset.unit || null); return; }
+  if (d) { e.preventDefault(); const ds = d.dataset; openDrawing({ src: ds.draw, title: ds.dtitle, full: ds.full }, { unit: ds.unit, opg: ds.opg, floor: ds.floor }); return; }
   const g = e.target.closest("[data-go]");
   if (g) { e.preventDefault(); go(g.dataset.go); }
 });
-async function openDrawing(src, title, unitId) {
-  const v = $("#viewer"); v.hidden = false;
-  V.unit = unitId || V.unit;
-  $("#vUnitBtn").hidden = !(V.unit && UNITS.get(V.unit)?.img);
-  $("#vtitle").textContent = title || "";
+async function openDrawing(d, ctx) {
+  $("#viewer").hidden = false;
+  if (ctx) V.ctx = ctx;
+  V.base = d; V.whole = false;
+  $("#vtitle").textContent = d.title || "";
+  await loadImg(d.src);
+}
+// Tegninger der hører til det, man står i: bolig, etageplan(er), oversigtsplan, signatur
+function relatedDrawings() {
+  const u = V.ctx.unit && UNITS.get(V.ctx.unit);
+  const opg = V.ctx.opg || u?.o;
+  const floors = V.ctx.floor ? [V.ctx.floor] : u ? u.f : [];
+  const out = [];
+  if (u?.img) out.push({ src: u.img, title: `${u.o} ${unitName(u)} – side ${u.id}`, label: `Bolig: ${unitName(u)} (side ${u.id})` });
+  for (const f of floors) for (const p of plansFor(opg, f)) out.push({ ...planDraw(p), label: p.s });
+  const b = OPG.get(opg)?.b || u?.b;
+  if (b) out.push({ src: ovImg(b), title: `Oversigtsplan ${b}`, label: `Oversigtsplan bygning ${b}` });
+  out.push({ src: SIG_IMG, title: "Signaturforklaring", label: "Signaturforklaring (boliger)" });
+  return out;
+}
+async function loadImg(src) {
   if (V.cur === src && V.img) { fitView(); return; }
-  V.cur = src; V.img = null; V.mip = null; V.rot = 0; V.whole = false;
+  V.cur = src; V.img = null; V.mip = null; V.rot = 0;
   const msg = $("#vmsg"); msg.hidden = false; msg.innerHTML = `<span class="spinner"></span> Åbner tegning …`;
   draw();
   try {
@@ -625,7 +660,7 @@ function fitView() {
   const { W, H } = vSize(); const [x0, y0, x1, y1] = planRect();
   V.s = Math.min(W / (x1 - x0), H / (y1 - y0));
   V.tx = (W - (x1 - x0) * V.s) / 2 - x0 * V.s; V.ty = (H - (y1 - y0) * V.s) / 2 - y0 * V.s;
-  const b = $("#vFitBtn"); if (b) b.textContent = V.whole ? "Plan" : "Hele ark";
+  const b = $("#vFitBtn"); if (b) b.textContent = V.whole ? "Udsnit" : "Hele ark";
   draw();
 }
 function draw() { cancelAnimationFrame(V.raf); V.raf = requestAnimationFrame(paint); }
@@ -672,12 +707,17 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
     const b = e.target.closest("[data-v]"); if (!b) return;
     const a = b.dataset.v;
     if (a === "close") { $("#viewer").hidden = true; V.pts.clear(); }
-    if (a === "fit") { V.whole = !V.whole; fitView(); }
+    if (a === "fit") {
+      V.whole = !V.whole;
+      // Etage-/kældertegninger: skift mellem skarpt udsnit og hele arket (med signaturer og titelfelt)
+      if (V.base?.full) loadImg(V.whole ? V.base.full : V.base.src); else fitView();
+    }
     if (a === "rot" && V.img) { V.rot = (V.rot + 1) % 4; fitView(); }
-    const u = V.unit && UNITS.get(V.unit);
-    if (a === "ov") openDrawing(ovImg(u ? u.b : parseRoute()[1]?.slice(0, 2) || "F1"), `Oversigtsplan ${u ? u.b : ""}`, null);
-    if (a === "sig") openDrawing(SIG_IMG, "Signaturforklaring", null);
-    if (a === "unit" && u?.img) openDrawing(u.img, `${u.o} ${unitName(u)} – side ${u.id}`, u.id);
+    if (a === "list") {
+      const list = relatedDrawings();
+      dialog("Vælg tegning", [...list.map((d, i) => ({ label: (d.src === V.base?.src ? "● " : "") + d.label, value: i, cls: d.src === V.base?.src ? "primary" : "" })), { label: "Annullér", value: null }])
+        .then((i) => { if (i !== null && i !== undefined) openDrawing(list[i]); });
+    }
   });
 })();
 
