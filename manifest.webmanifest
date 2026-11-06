@@ -1,0 +1,17 @@
+{
+  "name": "SP2 Dåsekontrol",
+  "short_name": "SP2 Dåsekontrol",
+  "description": "Kontrol af indstøbte el-dåser og rør på Stejlepladsen (SP2)",
+  "lang": "da",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#12355b",
+  "theme_color": "#12355b",
+  "icons": [
+    { "src": "ikoner/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "ikoner/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "ikoner/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

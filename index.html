@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SP2 Dåsekontrol</title>
+<meta name="theme-color" content="#12355b">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SP2 Dåsekontrol">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="ikoner/icon-192.png">
+<link rel="apple-touch-icon" href="ikoner/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header id="top">
+  <button id="btnBack" class="topbtn" aria-label="Tilbage">‹ Tilbage</button>
+  <div id="titles"><div id="title">SP2 Dåsekontrol</div><div id="subtitle"></div></div>
+  <button id="btnMenu" class="topbtn" aria-label="Menu">Menu</button>
+</header>
+<div id="updateBar" hidden>
+  <span>Der er en ny version af appen. Dine registreringer bevares.</span>
+  <button id="btnUpdate">Opdater nu</button>
+</div>
+<main id="main"></main>
+
+<!-- Tegningsviser -->
+<div id="viewer" class="overlay" hidden>
+  <div class="vbar">
+    <button data-v="close" class="vbtn vclose">Luk</button>
+    <div id="vtitle"></div>
+  </div>
+  <canvas id="vcanvas"></canvas>
+  <div id="vmsg" hidden></div>
+  <div class="vbar vbottom">
+    <button data-v="fit" class="vbtn" id="vFitBtn">Hele ark</button>
+    <button data-v="rot" class="vbtn">Rotér</button>
+    <button data-v="unit" class="vbtn" id="vUnitBtn">Bolig</button>
+    <button data-v="ov" class="vbtn">Oversigt</button>
+    <button data-v="sig" class="vbtn">Signatur</button>
+  </div>
+</div>
+
+<!-- Billedviser -->
+<div id="photoView" class="overlay" hidden>
+  <div class="vbar">
+    <button id="pvClose" class="vbtn vclose">Luk</button>
+    <div></div>
+    <button id="pvDelete" class="vbtn danger">Slet billede</button>
+  </div>
+  <img id="pvImg" alt="Billede">
+</div>
+
+<!-- Dialog -->
+<div id="dialog" class="overlay dim" hidden>
+  <div class="dbox">
+    <div id="dText"></div>
+    <div id="dBtns"></div>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+<div id="print"></div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
