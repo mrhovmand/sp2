@@ -234,7 +234,7 @@ async function viewHome(m) {
       const s = statsUnits([...new Set(all)]);
       h += `<button class="tile" data-go="/o/${encodeURIComponent(o.id)}"><b>${esc(o.id)}</b>
         <span class="sub">${o.units.length} boliger</span>
-        <span class="sub">${s.n ? `${s.n} dåser${s.dev ? ` · <span class="badge b-afv">${s.dev} afv.</span>` : ""}` : "Ingen registreringer"}</span></button>`;
+        <span class="sub">${s.n ? `${s.n} reg.${s.dev ? ` · <span class="badge b-afv">${s.dev} afv.</span>` : ""}` : "Ingen registreringer"}</span></button>`;
     }
     h += `</div>`;
   }
@@ -317,12 +317,12 @@ async function viewUnit(m, unitId) {
       <div class="btnrow"><button class="btn primary small" id="uSave">Gem navn</button><button class="btn small" id="uReset">Brug forslag (${esc(u.n)})</button></div></div></div>`;
   }
   if (u.f.includes("Tag")) h += tagNoteHtml(u.o);
-  h += `<h2>Registrerede dåser (${regs.length})</h2>`;
-  if (!regs.length) h += `<p class="muted">Ingen dåser registreret endnu.</p>`;
+  h += `<h2>Registreringer (${regs.length})</h2>`;
+  if (!regs.length) h += `<p class="muted">Ingen registreringer endnu.</p>`;
   h += `<div class="list">`;
   regs.forEach((r, i) => {
     h += `<button class="row" data-go="/d/${encodeURIComponent(r.id)}"><div class="main">
-      <div class="name">Dåse ${i + 1} · ${esc(typeLabel(r))}</div>
+      <div class="name">Registrering ${i + 1} · ${esc(typeLabel(r))}</div>
       <div class="sub">${esc(r.room || "Intet rum angivet")} · ${r.photos.length} billede${r.photos.length === 1 ? "" : "r"}</div>
       <div>${r.devBox ? `<span class="badge b-afv">Afv. dåse</span>` : `<span class="badge b-ok">Dåse OK</span>`}${r.devPipe ? `<span class="badge b-afv">Afv. rør</span>` : `<span class="badge b-ok">Rør OK</span>`}${r.devOther ? `<span class="badge b-afv">Anden afv.</span>` : ""}</div>
       </div><span class="chev">›</span></button>`;
@@ -375,7 +375,7 @@ async function viewReg(m, idOrNew, unitArg) {
   }
   const r = draft, u = UNITS.get(r.unit);
   const idx = regsOf(u.id).findIndex((x) => x.id === r.id);
-  setTop(`${u.o} · ${unitName(u)}`, idx >= 0 ? `Dåse ${idx + 1}` : "Ny registrering");
+  setTop(`${u.o} · ${unitName(u)}`, idx >= 0 ? `Registrering ${idx + 1}` : "Ny registrering");
   const rooms = [...new Set(["Alle rum", ...u.r, ...DEFAULT_ROOMS, ...regsOf(u.id).map((x) => x.room).filter(Boolean)])];
   m.innerHTML = `
     <label class="lbl">Type <span class="small muted">(vælg en eller flere)</span></label>
@@ -405,7 +405,7 @@ async function viewReg(m, idOrNew, unitArg) {
 
     <div class="btnrow" style="margin-top:22px"><button class="btn primary" id="bDone">Færdig</button></div>
     <div class="btnrow"><button class="btn" id="bNext">Gem og ny registrering</button></div>
-    <div class="btnrow"><button class="btn danger small" id="bDel">Slet denne dåse</button></div>
+    <div class="btnrow"><button class="btn danger small" id="bDel">Slet denne registrering</button></div>
     <p class="small muted">Alt gemmes automatisk på telefonen.</p>`;
   renderThumbs();
 
@@ -447,9 +447,9 @@ async function viewReg(m, idOrNew, unitArg) {
     history.replaceState(null, "", "#/d/new/" + encodeURIComponent(uidd)); render(); toast("Gemt – klar til næste registrering");
   };
   $("#bDel").onclick = async () => {
-    if (!(await confirmBox("Slet denne dåse og dens billeder?", "Slet dåse"))) return;
+    if (!(await confirmBox("Slet denne registrering og dens billeder?", "Slet registrering"))) return;
     if (REGS.has(r.id)) { for (const pid of r.photos) await dbDel("photos", pid); await dbDel("regs", r.id); REGS.delete(r.id); }
-    const uidd = r.unit; draft = null; toast("Dåse slettet");
+    const uidd = r.unit; draft = null; toast("Registrering slettet");
     go("/u/" + encodeURIComponent(uidd));
   };
 }
@@ -514,8 +514,8 @@ async function viewOverview(m, opgId) {
     for (const f of o.floors) {
       const us = unitsOn(opgId, f).filter((u) => primaryFloor(u) === f);
       const s = statsUnits(us);
-      h += `<h3>${esc(f)} – ${s.n} dåser${s.dev ? `, <span class="badge b-afv">${s.dev} afv.</span>` : ""}</h3>
-        <div class="tablewrap"><table class="sumtable"><tr><th>Bolig</th><th>Dåser</th><th>Afv.</th><th>Typer</th></tr>`;
+      h += `<h3>${esc(f)} – ${s.n} registreringer${s.dev ? `, <span class="badge b-afv">${s.dev} afv.</span>` : ""}</h3>
+        <div class="tablewrap"><table class="sumtable"><tr><th>Bolig</th><th>Reg.</th><th>Afv.</th><th>Typer</th></tr>`;
       for (const u of us) {
         const regs = regsOf(u.id), su = stats(regs);
         const types = {}; regs.forEach((r) => typeParts(r).forEach((t) => { types[t] = (types[t] || 0) + 1; }));
@@ -542,7 +542,7 @@ async function viewOverview(m, opgId) {
     }
     h += `<td class="n"><b>${tot.n}</b>${tot.dev ? `<br><span class="badge b-afv">${tot.dev}</span>` : ""}</td></tr>`;
   }
-  h += `</table></div><p class="small muted">Tal = antal dåser. Rødt = antal med afvigelse.</p>`;
+  h += `</table></div><p class="small muted">Tal = antal registreringer. Rødt = antal med afvigelse.</p>`;
   m.innerHTML = h;
 }
 
@@ -578,7 +578,7 @@ async function viewMenu(m) {
     </div>
     <h2>Om</h2>
     <div class="card small">SP2 Dåsekontrol · version <b id="mVer">…</b><br>
-      ${REGS.size} dåser registreret i alt.<br>Tegninger: Artelia N930 (I1, J1, J2, K1, K3) og N931 rev. 1 (F1, F2, F3, F5, F6).
+      ${REGS.size} registreringer i alt.<br>Tegninger: Artelia N930 (I1, J1, J2, K1, K3) og N931 rev. 1 (F1, F2, F3, F5, F6).
       <div class="btnrow"><button class="btn small" id="mUpd">Søg efter ny version</button></div></div>`;
   swVersion().then((v) => { const e = $("#mVer"); if (e) e.textContent = v || "ukendt"; });
   $("#mHent").onclick = downloadAll;
@@ -760,7 +760,7 @@ function allRegsSorted(filterOpg) {
 }
 async function exportCsv() {
   const q = (v) => { v = String(v ?? ""); return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
-  const rows = [["Bygning", "Opgang", "Etage", "Bolig", "Navn foreslået", "Tegning side", "Dåse nr.", "Type", "Rum", "Dåse", "Note dåse", "Rør", "Note rør", "Anden afvigelse", "Note anden afvigelse", "Antal billeder", "Oprettet", "Senest ændret"]];
+  const rows = [["Bygning", "Opgang", "Etage", "Bolig", "Navn foreslået", "Tegning side", "Registrering nr.", "Type", "Rum", "Dåse", "Note dåse", "Rør", "Note rør", "Anden afvigelse", "Note anden afvigelse", "Antal billeder", "Oprettet", "Senest ændret"]];
   const counters = {};
   for (const r of allRegsSorted()) {
     const u = UNITS.get(r.unit); counters[r.unit] = (counters[r.unit] || 0) + 1;
@@ -770,7 +770,7 @@ async function exportCsv() {
   rows.push([]); rows.push(["Tagnoter"]);
   for (const [o, t] of Object.entries(TAG)) if (t && t.trim()) rows.push(["", o, "Tag", "", "", "", "", "", "", "", t]);
   const csv = "﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n");
-  await offerFile(new Blob([csv], { type: "text/csv;charset=utf-8" }), `SP2-daasekontrol-${today()}.csv`, `CSV med ${REGS.size} dåser er klar.`);
+  await offerFile(new Blob([csv], { type: "text/csv;charset=utf-8" }), `SP2-daasekontrol-${today()}.csv`, `CSV med ${REGS.size} registreringer er klar.`);
 }
 
 /* Filudlevering: del-ark på iPhone, ellers download */
@@ -789,13 +789,17 @@ let repUrls = [];
 async function viewReport(m) {
   const my = renderSeq;
   setTop("Rapport", "Print eller gem som PDF");
-  const opts = await metaGet("repOpts", { opg: "", onlyDev: false, photos: "dev" });
+  const saved = await metaGet("repOpts", {});
+  const opts = { opg: saved.opg || "", photos: saved.photos || "dev", cats: saved.cats || { devBox: true, devPipe: true, devOther: true }, withOk: saved.withOk ?? !saved.onlyDev };
   if (my !== renderSeq) return;
+  const chk = (id, label, on) => `<button class="check ${on ? "on" : ""}" id="${id}"><span class="box">${on ? "✓" : ""}</span>${label}</button>`;
   m.innerHTML = `
     <label class="lbl" for="rOpg">Omfang</label>
     <select id="rOpg"><option value="">Alle opgange</option>${[...OPG.keys()].map((o) => `<option ${opts.opg === o ? "selected" : ""}>${esc(o)}</option>`).join("")}</select>
-    <label class="lbl">Indhold</label>
-    <button class="check ${opts.onlyDev ? "on" : ""}" id="rDev"><span class="box">${opts.onlyDev ? "✓" : ""}</span>Kun dåser med afvigelse</button>
+    <label class="lbl">Afvigelser i rapporten</label>
+    <div class="list">${Object.entries(CHECKS).map(([k, l]) => chk("rc-" + k, l, opts.cats[k])).join("")}</div>
+    <label class="lbl">Øvrige registreringer</label>
+    ${chk("rOk", "Medtag også registreringer uden afvigelse", opts.withOk)}
     <label class="lbl" for="rPh">Billeder</label>
     <select id="rPh"><option value="none">Ingen billeder</option><option value="dev">Kun ved afvigelser</option><option value="all">Alle billeder</option></select>
     <div class="btnrow" style="margin-top:18px"><button class="btn primary" id="rPrint">Udskriv / gem som PDF</button></div>
@@ -803,10 +807,11 @@ async function viewReport(m) {
     <p class="small muted">På iPhone: tryk Udskriv, knib ud på forhåndsvisningen eller vælg Del → Gem i Filer for at få en PDF. Virker print ikke i appen, så brug "Gem rapport som fil" og åbn den i Safari.</p>
     <div class="reppreview" id="rPrev"></div>`;
   $("#rPh").value = opts.photos;
-  const read = () => ({ opg: $("#rOpg").value, onlyDev: $("#rDev").classList.contains("on"), photos: $("#rPh").value });
+  const on = (id) => $("#" + id).classList.contains("on");
+  const read = () => ({ opg: $("#rOpg").value, photos: $("#rPh").value, withOk: on("rOk"), cats: Object.fromEntries(Object.keys(CHECKS).map((k) => [k, on("rc-" + k)])) });
   const refresh = async () => { const o = read(); await metaSet("repOpts", o); $("#rPrev").innerHTML = await reportHtml(o, false); };
   $("#rOpg").onchange = refresh; $("#rPh").onchange = refresh;
-  $("#rDev").onclick = () => { const b = $("#rDev"); b.classList.toggle("on"); b.querySelector(".box").textContent = b.classList.contains("on") ? "✓" : ""; refresh(); };
+  m.querySelectorAll("[id^=rc-], #rOk").forEach((b) => b.onclick = () => { b.classList.toggle("on"); b.querySelector(".box").textContent = b.classList.contains("on") ? "✓" : ""; refresh(); });
   $("#rPrint").onclick = async () => {
     const p = $("#print"); p.innerHTML = await reportHtml(read(), false);
     await Promise.all([...p.querySelectorAll("img")].map((i) => i.decode().catch(() => {})));
@@ -824,18 +829,24 @@ async function viewReport(m) {
 const blobToDataUrl = (b) => new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(b); });
 async function reportHtml(o, embed) {
   if (!embed && repUrls.length > 400) repUrls.splice(0, 200).forEach(URL.revokeObjectURL);
-  const regs = allRegsSorted(o.opg).filter((r) => !o.onlyDev || isDev(r));
+  // Valgte afvigelsestyper (dåse / rør / anden)
+  const cats = Object.keys(CHECKS).filter((k) => o.cats?.[k]);
+  const relDev = (r) => cats.some((k) => r[k]);
+  const regs = allRegsSorted(o.opg).filter((r) => o.withOk || relDev(r));
   const opgs = o.opg ? [o.opg] : [...OPG.keys()];
   const all = allRegsSorted(o.opg);
+  const COLS = { devBox: ["Dåse", "devBoxNote", "OK"], devPipe: ["Rør", "devPipeNote", "OK"], devOther: ["Anden afvigelse", "devOtherNote", "–"] };
   let h = `<div class="rep"><h1>SP2 Dåsekontrol – Stejlepladsen</h1>
-    <div>Rapport ${new Date().toLocaleString("da-DK")} · ${o.opg ? esc(opgLabel(o.opg)) : "Alle opgange"} · ${all.length} dåser kontrolleret · <span class="afv">${all.filter(isDev).length} med afvigelse</span>${o.onlyDev ? " · viser kun afvigelser" : ""}</div>
-    <h2>Opsummering</h2><table><tr><th>Opgang</th><th>Etage</th><th>Boliger med registrering</th><th>Dåser</th><th>Afvigelser</th></tr>`;
+    <div>Rapport ${new Date().toLocaleString("da-DK")} · ${o.opg ? esc(opgLabel(o.opg)) : "Alle opgange"} · ${all.length} registreringer · <span class="afv">${all.filter(relDev).length} med valgte afvigelser</span></div>
+    <div>Viser: ${cats.length ? cats.map((k) => CHECKS[k].toLowerCase()).join(", ") : "ingen afvigelsestyper valgt"}${o.withOk ? " + registreringer uden afvigelse" : ""}</div>
+    <h2>Opsummering</h2><table><tr><th>Opgang</th><th>Etage</th><th>Boliger med registrering</th><th>Registreringer</th>${cats.map((k) => `<th>${COLS[k][0]}</th>`).join("")}</tr>`;
   for (const oid of opgs) {
     const og = OPG.get(oid);
     for (const f of og.floors) {
       const us = unitsOn(oid, f).filter((u) => primaryFloor(u) === f);
       const s = statsUnits(us); if (!s.n) continue;
-      h += `<tr><td>${esc(oid)}</td><td>${esc(f)}</td><td>${s.done} / ${us.length}</td><td>${s.n}</td><td class="${s.dev ? "afv" : ""}">${s.dev}</td></tr>`;
+      const rr = us.flatMap((u) => regsOf(u.id));
+      h += `<tr><td>${esc(oid)}</td><td>${esc(f)}</td><td>${s.done} / ${us.length}</td><td>${s.n}</td>${cats.map((k) => { const c = rr.filter((r) => r[k]).length; return `<td class="${c ? "afv" : ""}">${c}</td>`; }).join("")}</tr>`;
     }
   }
   h += `</table>`;
@@ -851,10 +862,10 @@ async function reportHtml(o, embed) {
       if (curUnit) h += `</table>`;
       curUnit = r.unit;
       h += `<h3>${esc(u.o)} · ${esc(u.f.join("–"))} · ${esc(unitName(u))}${isProposed(u) ? " (foreslået navn)" : ""}${u.real ? ` · tegning side ${esc(u.id)}` : ""}</h3>
-        <table><tr><th style="width:34px">Nr.</th><th style="width:22%">Type / rum</th><th>Dåse</th><th>Rør</th><th>Anden afvigelse</th></tr>`;
+        <table><tr><th style="width:34px">Nr.</th><th style="width:22%">Type / rum</th>${cats.map((k) => `<th>${COLS[k][0]}</th>`).join("")}</tr>`;
     }
     let ph = "";
-    if (o.photos === "all" || (o.photos === "dev" && isDev(r))) {
+    if (o.photos === "all" || (o.photos === "dev" && relDev(r))) {
       for (const pid of r.photos) {
         const p = await dbGet("photos", pid); if (!p) continue;
         let src; if (embed) src = await blobToDataUrl(p.blob); else { src = URL.createObjectURL(p.blob); repUrls.push(src); }
@@ -862,10 +873,8 @@ async function reportHtml(o, embed) {
       }
     }
     h += `<tr><td>${r._nr}</td><td><b>${esc(typeLabel(r))}</b><br>${esc(r.room)}</td>
-      <td>${r.devBox ? `<span class="afv">AFVIGELSE</span>` : "OK"}${r.devBoxNote ? `<br>${esc(r.devBoxNote)}` : ""}</td>
-      <td>${r.devPipe ? `<span class="afv">AFVIGELSE</span>` : "OK"}${r.devPipeNote ? `<br>${esc(r.devPipeNote)}` : ""}</td>
-      <td>${r.devOther ? `<span class="afv">AFVIGELSE</span>` : "–"}${r.devOtherNote ? `<br>${esc(r.devOtherNote)}` : ""}</td></tr>
-      ${ph ? `<tr><td></td><td colspan="4"><div class="ph">${ph}</div></td></tr>` : ""}`;
+      ${cats.map((k) => `<td>${r[k] ? `<span class="afv">AFVIGELSE</span>` : COLS[k][2]}${r[COLS[k][1]] ? `<br>${esc(r[COLS[k][1]])}` : ""}</td>`).join("")}</tr>
+      ${ph ? `<tr><td></td><td colspan="${1 + cats.length}"><div class="ph">${ph}</div></td></tr>` : ""}`;
     n++;
   }
   if (curUnit) h += `</table>`;
@@ -926,7 +935,7 @@ async function makeBackup() {
   files.unshift({ name: "data.json", data: new TextEncoder().encode(JSON.stringify(data, null, 1)) });
   const blob = await zipBlob(files);
   $("#toast").hidden = true;
-  const ok = await offerFile(blob, `SP2-backup-${today()}.zip`, `Backup med ${regs.length} dåser og ${photos.length} billeder er klar.`);
+  const ok = await offerFile(blob, `SP2-backup-${today()}.zip`, `Backup med ${regs.length} registreringer og ${photos.length} billeder er klar.`);
   if (ok) { await metaSet("lastBackup", nowIso()); if (parseRoute()[0] === "menu") render(); }
 }
 async function restoreBackup(file) {
@@ -935,7 +944,7 @@ async function restoreBackup(file) {
     if (!z["data.json"]) throw new Error("Filen er ikke en SP2-backup");
     const data = JSON.parse(new TextDecoder().decode(z["data.json"]));
     if (data.app !== "sp2-daasekontrol") throw new Error("Filen er ikke en SP2-backup");
-    if (!(await confirmBox(`Backup fra ${fmtDate(data.exported)} med ${data.regs.length} dåser.\n\nDen flettes ind i det, der allerede er på telefonen. Intet bliver slettet. Er samme dåse ændret begge steder, beholdes den nyeste udgave.`, "Gendan", "primary"))) return;
+    if (!(await confirmBox(`Backup fra ${fmtDate(data.exported)} med ${data.regs.length} registreringer.\n\nDen flettes ind i det, der allerede er på telefonen. Intet bliver slettet. Er samme registrering ændret begge steder, beholdes den nyeste udgave.`, "Gendan", "primary"))) return;
     let added = 0, updated = 0, ph = 0;
     for (const p of data.photos) {
       if (await dbGet("photos", p.id)) continue;
@@ -955,7 +964,7 @@ async function restoreBackup(file) {
     for (const [k, v] of Object.entries(m.tag || {})) { if (!v || !v.trim()) continue; if (!tag[k] || !tag[k].trim()) tag[k] = v; else if (!tag[k].includes(v)) tag[k] = tag[k] + "\n--- fra backup ---\n" + v; }
     await metaSet("tag", tag);
     await loadAll();
-    await dialog(`Gendannelse færdig.\n${added} nye dåser, ${updated} opdateret, ${ph} billeder tilføjet.`, [{ label: "OK", value: 1, cls: "primary" }]);
+    await dialog(`Gendannelse færdig.\n${added} nye registreringer, ${updated} opdateret, ${ph} billeder tilføjet.`, [{ label: "OK", value: 1, cls: "primary" }]);
     render();
   } catch (e) { console.error(e); dialog("Kunne ikke gendanne: " + e.message, [{ label: "OK", value: 1 }]); }
 }

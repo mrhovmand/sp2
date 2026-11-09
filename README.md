@@ -40,7 +40,7 @@ Hvis du hellere vil bruge **GitHub Desktop**, kan du kopiere indholdet af de fir
 
 ## Rapport, CSV og backup
 
-- **Menu → Rapport:** Vælg omfang og billeder, og tryk **Udskriv / gem som PDF**. Virker print ikke, så brug "Gem rapport som fil" og åbn filen i Safari.
+- **Menu → Rapport:** Vælg omfang, hvilke afvigelser der skal med (dåse, rør, anden afvigelse), om registreringer uden afvigelse skal med, og billeder. Tryk så **Udskriv / gem som PDF**. Virker print ikke, så brug "Gem rapport som fil" og åbn filen i Safari.
 - **Menu → Eksportér CSV:** Filen åbner direkte i Excel.
 - **Menu → Tag backup:** Laver en .zip med alle data og billeder. Gem den i Filer/iCloud eller mail den til dig selv, og gør det jævnligt. Appen minder dig om det efter 7 dage.
 - **Gendan** fletter backup'en ind uden at slette noget. Det kan også bruges til at flytte data til en ny telefon.
