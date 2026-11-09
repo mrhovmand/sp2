@@ -28,7 +28,7 @@ Hvis du hellere vil bruge **GitHub Desktop**, kan du kopiere indholdet af de fir
 
 ## Daglig brug
 
-- Vælg opgang, så etage og så bolig, og tryk **＋ Ny dåse**. Alt gemmes automatisk.
+- Vælg opgang, så etage og så bolig, og tryk **＋ Ny registrering**. Alt gemmes automatisk.
 - **‹** går ét niveau op: dåse → bolig → etage → opgang → oversigt. **Hjem** går direkte til oversigten over alle opgange.
 - Du kan vælge flere typer på samme dåse, fx Lampeudtag + Stikkontakt. "Generelt" og "Alle rum" kan bruges til ting, der gælder hele boligen.
 - Ikke afkrydset betyder OK. Sæt flueben ved "Afvigelse dåse", "Afvigelse rør" eller "Anden afvigelse", og skriv en note.

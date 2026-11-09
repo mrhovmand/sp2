@@ -307,7 +307,7 @@ async function viewUnit(m, unitId) {
   const u = UNITS.get(unitId);
   setTop(`${u.o} · ${unitName(u)}`, u.real ? `Side ${u.id} · ${u.k}` : u.f[0]);
   const regs = regsOf(unitId);
-  let h = `<div class="btnrow"><button class="btn primary" data-go="/d/new/${encodeURIComponent(unitId)}">＋ Ny dåse</button></div>
+  let h = `<div class="btnrow"><button class="btn primary" data-go="/d/new/${encodeURIComponent(unitId)}">＋ Ny registrering</button></div>
     <div class="btnrow">${drawBtn("btn", "📐 Tegning", unitDraw(u), { unit: u.id })}</div>`;
   if (u.real) {
     h += `<div class="card"><div><b>Navn:</b> ${esc(unitName(u))} ${isProposed(u) ? `<span class="badge b-prop">foreslået</span>` : ""}</div>
@@ -375,7 +375,7 @@ async function viewReg(m, idOrNew, unitArg) {
   }
   const r = draft, u = UNITS.get(r.unit);
   const idx = regsOf(u.id).findIndex((x) => x.id === r.id);
-  setTop(`${u.o} · ${unitName(u)}`, idx >= 0 ? `Dåse ${idx + 1}` : "Ny dåse");
+  setTop(`${u.o} · ${unitName(u)}`, idx >= 0 ? `Dåse ${idx + 1}` : "Ny registrering");
   const rooms = [...new Set(["Alle rum", ...u.r, ...DEFAULT_ROOMS, ...regsOf(u.id).map((x) => x.room).filter(Boolean)])];
   m.innerHTML = `
     <label class="lbl">Type <span class="small muted">(vælg en eller flere)</span></label>
@@ -404,7 +404,7 @@ async function viewReg(m, idOrNew, unitArg) {
     <div id="photoBusy" class="small" hidden><span class="spinner"></span> Komprimerer billede …</div>
 
     <div class="btnrow" style="margin-top:22px"><button class="btn primary" id="bDone">Færdig</button></div>
-    <div class="btnrow"><button class="btn" id="bNext">Gem og ny dåse</button></div>
+    <div class="btnrow"><button class="btn" id="bNext">Gem og ny registrering</button></div>
     <div class="btnrow"><button class="btn danger small" id="bDel">Slet denne dåse</button></div>
     <p class="small muted">Alt gemmes automatisk på telefonen.</p>`;
   renderThumbs();
@@ -444,7 +444,7 @@ async function viewReg(m, idOrNew, unitArg) {
   $("#bNext").onclick = async () => {
     if (!regHasContent(r)) return toast("Udfyld mindst type, rum eller billede");
     await saveDraft(); const uidd = r.unit; draft = blankReg(uidd);
-    history.replaceState(null, "", "#/d/new/" + encodeURIComponent(uidd)); render(); toast("Gemt – klar til næste dåse");
+    history.replaceState(null, "", "#/d/new/" + encodeURIComponent(uidd)); render(); toast("Gemt – klar til næste registrering");
   };
   $("#bDel").onclick = async () => {
     if (!(await confirmBox("Slet denne dåse og dens billeder?", "Slet dåse"))) return;
