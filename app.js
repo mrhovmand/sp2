@@ -144,7 +144,7 @@ function normReg(r) {
   return r;
 }
 const isDev = (r) => r.devBox || r.devPipe || r.devOther;
-const CHECKS = { devBox: "Afvigelse dåse", devPipe: "Afvigelse rør", devOther: "Anden afvigelse" };
+const CHECKS = { devBox: "Afvigelse dåse", devPipe: "Afvigelse rør/udsparing", devOther: "Anden afvigelse" };
 function stats(regs) { return { n: regs.length, dev: regs.filter(isDev).length }; }
 function statsUnits(units) {
   let n = 0, dev = 0, done = 0;
@@ -324,7 +324,7 @@ async function viewUnit(m, unitId) {
     h += `<button class="row" data-go="/d/${encodeURIComponent(r.id)}"><div class="main">
       <div class="name">Registrering ${i + 1} · ${esc(typeLabel(r))}</div>
       <div class="sub">${esc(r.room || "Intet rum angivet")} · ${r.photos.length} billede${r.photos.length === 1 ? "" : "r"}</div>
-      <div>${r.devBox ? `<span class="badge b-afv">Afv. dåse</span>` : `<span class="badge b-ok">Dåse OK</span>`}${r.devPipe ? `<span class="badge b-afv">Afv. rør</span>` : `<span class="badge b-ok">Rør OK</span>`}${r.devOther ? `<span class="badge b-afv">Anden afv.</span>` : ""}</div>
+      <div>${r.devBox ? `<span class="badge b-afv">Afv. dåse</span>` : `<span class="badge b-ok">Dåse OK</span>`}${r.devPipe ? `<span class="badge b-afv">Afv. rør/udsp.</span>` : `<span class="badge b-ok">Rør/udsp. OK</span>`}${r.devOther ? `<span class="badge b-afv">Anden afv.</span>` : ""}</div>
       </div><span class="chev">›</span></button>`;
   });
   h += `</div>`;
@@ -389,8 +389,8 @@ async function viewReg(m, idOrNew, unitArg) {
     <label class="lbl">Kontrol</label>
     <div class="devblock">${checkHtml("devBox", "Afvigelse dåse", r.devBox)}
       <textarea id="fBoxNote" placeholder="Note om dåsen">${esc(r.devBoxNote)}</textarea></div>
-    <div class="devblock">${checkHtml("devPipe", "Afvigelse rør", r.devPipe)}
-      <textarea id="fPipeNote" placeholder="Note om rør">${esc(r.devPipeNote)}</textarea></div>
+    <div class="devblock">${checkHtml("devPipe", CHECKS.devPipe, r.devPipe)}
+      <textarea id="fPipeNote" placeholder="Note om rør/udsparing">${esc(r.devPipeNote)}</textarea></div>
     <div class="devblock">${checkHtml("devOther", CHECKS.devOther, r.devOther)}
       <textarea id="fOtherNote" placeholder="Note om anden afvigelse">${esc(r.devOtherNote)}</textarea></div>
 
@@ -760,7 +760,7 @@ function allRegsSorted(filterOpg) {
 }
 async function exportCsv() {
   const q = (v) => { v = String(v ?? ""); return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
-  const rows = [["Bygning", "Opgang", "Etage", "Bolig", "Navn foreslået", "Tegning side", "Registrering nr.", "Type", "Rum", "Dåse", "Note dåse", "Rør", "Note rør", "Anden afvigelse", "Note anden afvigelse", "Antal billeder", "Oprettet", "Senest ændret"]];
+  const rows = [["Bygning", "Opgang", "Etage", "Bolig", "Navn foreslået", "Tegning side", "Registrering nr.", "Type", "Rum", "Dåse", "Note dåse", "Rør/udsparing", "Note rør/udsparing", "Anden afvigelse", "Note anden afvigelse", "Antal billeder", "Oprettet", "Senest ændret"]];
   const counters = {};
   for (const r of allRegsSorted()) {
     const u = UNITS.get(r.unit); counters[r.unit] = (counters[r.unit] || 0) + 1;
@@ -835,7 +835,7 @@ async function reportHtml(o, embed) {
   const regs = allRegsSorted(o.opg).filter((r) => o.withOk || relDev(r));
   const opgs = o.opg ? [o.opg] : [...OPG.keys()];
   const all = allRegsSorted(o.opg);
-  const COLS = { devBox: ["Dåse", "devBoxNote", "OK"], devPipe: ["Rør", "devPipeNote", "OK"], devOther: ["Anden afvigelse", "devOtherNote", "–"] };
+  const COLS = { devBox: ["Dåse", "devBoxNote", "OK"], devPipe: ["Rør/udsparing", "devPipeNote", "OK"], devOther: ["Anden afvigelse", "devOtherNote", "–"] };
   let h = `<div class="rep"><h1>SP2 Dåsekontrol – Stejlepladsen</h1>
     <div>Rapport ${new Date().toLocaleString("da-DK")} · ${o.opg ? esc(opgLabel(o.opg)) : "Alle opgange"} · ${all.length} registreringer · <span class="afv">${all.filter(relDev).length} med valgte afvigelser</span></div>
     <div>Viser: ${cats.length ? cats.map((k) => CHECKS[k].toLowerCase()).join(", ") : "ingen afvigelsestyper valgt"}${o.withOk ? " + registreringer uden afvigelse" : ""}</div>

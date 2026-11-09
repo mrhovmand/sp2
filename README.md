@@ -31,7 +31,7 @@ Hvis du hellere vil bruge **GitHub Desktop**, kan du kopiere indholdet af de fir
 - Vælg opgang, så etage og så bolig, og tryk **＋ Ny registrering**. Alt gemmes automatisk.
 - **‹** går ét niveau op: dåse → bolig → etage → opgang → oversigt. **Hjem** går direkte til oversigten over alle opgange.
 - Du kan vælge flere typer på samme dåse, fx Lampeudtag + Stikkontakt. "Generelt" og "Alle rum" kan bruges til ting, der gælder hele boligen.
-- Ikke afkrydset betyder OK. Sæt flueben ved "Afvigelse dåse", "Afvigelse rør" eller "Anden afvigelse", og skriv en note.
+- Ikke afkrydset betyder OK. Sæt flueben ved "Afvigelse dåse", "Afvigelse rør/udsparing" eller "Anden afvigelse", og skriv en note.
 - **Tegning** åbner boligens tegning zoomet ind på planen. Brug to fingre til at zoome, træk for at flytte og dobbelttryk for at zoome ind/ud. **Hele ark** viser hele arket med titelfeltet, og **Signatur** viser signaturforklaringen.
 - Boligernes navne (tv./th. osv.) er **foreslåede**, fordi tegningerne ikke viser siden. Ret dem på stedet med **Ret navn**, eller tryk **Navnet er rigtigt**.
 - Noter om tag findes på hver opgang og under etagen "Tag".
@@ -40,7 +40,7 @@ Hvis du hellere vil bruge **GitHub Desktop**, kan du kopiere indholdet af de fir
 
 ## Rapport, CSV og backup
 
-- **Menu → Rapport:** Vælg omfang, hvilke afvigelser der skal med (dåse, rør, anden afvigelse), om registreringer uden afvigelse skal med, og billeder. Tryk så **Udskriv / gem som PDF**. Virker print ikke, så brug "Gem rapport som fil" og åbn filen i Safari.
+- **Menu → Rapport:** Vælg omfang, hvilke afvigelser der skal med (dåse, rør/udsparing, anden afvigelse), om registreringer uden afvigelse skal med, og billeder. Tryk så **Udskriv / gem som PDF**. Virker print ikke, så brug "Gem rapport som fil" og åbn filen i Safari.
 - **Menu → Eksportér CSV:** Filen åbner direkte i Excel.
 - **Menu → Tag backup:** Laver en .zip med alle data og billeder. Gem den i Filer/iCloud eller mail den til dig selv, og gør det jævnligt. Appen minder dig om det efter 7 dage.
 - **Gendan** fletter backup'en ind uden at slette noget. Det kan også bruges til at flytte data til en ny telefon.
