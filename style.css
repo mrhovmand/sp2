@@ -19,7 +19,8 @@ button{cursor:pointer;touch-action:manipulation}
 #title{font-weight:700;font-size:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #subtitle{font-size:14px;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .topbtn{background:rgba(255,255,255,.14);border:2px solid rgba(255,255,255,.5);color:#fff;
-  border-radius:12px;min-height:48px;min-width:84px;padding:0 10px;font-weight:700;font-size:17px}
+  border-radius:12px;min-height:52px;min-width:62px;padding:0 8px;font-weight:700;font-size:17px}
+.tb-back{font-size:34px;line-height:1;padding-bottom:4px;min-width:56px}
 .topbtn[hidden]{display:block;visibility:hidden}
 
 #updateBar{position:sticky;top:64px;z-index:19;background:var(--yellow);color:#000;padding:10px 12px;

@@ -72,8 +72,8 @@ async function metaSet(key, value) { await dbPut("meta", { key, value }); }
 /* ---------------- Projektdata ---------------- */
 const FLOOR_ORDER = ["Kælder", "Stue", "1. sal", "2. sal", "3. sal", "4. sal", "5. sal", "Tag"];
 const FLOOR_SHORT = { "Kælder": "kl.", "Stue": "st.", "1. sal": "1.", "2. sal": "2.", "3. sal": "3.", "4. sal": "4.", "5. sal": "5.", "Tag": "tag" };
-const TYPES = ["Lampeudtag", "Stikkontakt", "Afbryder", "Netværk", "Andet"];
-const DEFAULT_ROOMS = ["Køkken/alrum", "Stue", "Soveværelse", "Værelse", "Bad", "Gang", "Entré"];
+const TYPES = ["Lampeudtag", "Stikkontakt", "Afbryder", "Netværk", "Generelt", "Andet"];
+const DEFAULT_ROOMS = ["Alle rum", "Køkken/alrum", "Stue", "Soveværelse", "Værelse", "Bad", "Gang", "Entré"];
 const UNITS = new Map();      // id -> unit
 const OPG = new Map();        // opgang-id -> {id,b,floors[],units[]}
 const BUILDINGS = window.SP2_BUILDINGS;
@@ -129,7 +129,7 @@ let REGS = new Map(); // id -> reg
 let NAMES = {}, CONFIRMED = {}, TAG = {};
 async function loadAll() {
   const regs = await dbGetAll("regs");
-  REGS = new Map(regs.map((r) => [r.id, r]));
+  REGS = new Map(regs.map((r) => [r.id, normReg(r)]));
   NAMES = await metaGet("names", {});
   CONFIRMED = await metaGet("confirmed", {});
   TAG = await metaGet("tag", {});
@@ -137,7 +137,14 @@ async function loadAll() {
 const unitName = (u) => NAMES[u.id] || u.n;
 const isProposed = (u) => u.real && !NAMES[u.id] && !CONFIRMED[u.id];
 const regsOf = (unitId) => [...REGS.values()].filter((r) => r.unit === unitId).sort((a, b) => a.created.localeCompare(b.created));
-const isDev = (r) => r.devBox || r.devPipe;
+// Ældre registreringer (v1.0–1.2) havde én type i "type" og ingen "anden afvigelse"
+function normReg(r) {
+  if (!Array.isArray(r.types)) r.types = r.type ? [r.type] : [];
+  if (r.devOther === undefined) { r.devOther = false; r.devOtherNote = ""; }
+  return r;
+}
+const isDev = (r) => r.devBox || r.devPipe || r.devOther;
+const CHECKS = { devBox: "Afvigelse dåse", devPipe: "Afvigelse rør", devOther: "Anden afvigelse" };
 function stats(regs) { return { n: regs.length, dev: regs.filter(isDev).length }; }
 function statsUnits(units) {
   let n = 0, dev = 0, done = 0;
@@ -145,7 +152,8 @@ function statsUnits(units) {
   return { n, dev, done };
 }
 const opgLabel = (id) => id.includes("-") ? `Opgang ${id}` : `Bygning ${id}`;
-const typeLabel = (r) => r.type === "Andet" ? (r.typeOther ? `Andet: ${r.typeOther}` : "Andet") : (r.type || "Ingen type");
+const typeParts = (r) => normReg(r).types.map((t) => t === "Andet" ? (r.typeOther ? `Andet: ${r.typeOther}` : "Andet") : t);
+const typeLabel = (r) => typeParts(r).join(" + ") || "Ingen type";
 
 /* ---------------- Navigation ---------------- */
 function go(hash) { location.hash = hash; }
@@ -155,13 +163,33 @@ function parseRoute() {
   return p;
 }
 window.addEventListener("hashchange", render);
-$("#btnBack").onclick = () => { if (history.length > 1) history.back(); else go("/"); };
+const lastFloor = {}; // senest viste etage pr. opgang (bruges for boliger over flere etager)
+function parentRoute() {
+  const p = parseRoute();
+  if (p[0] === "d") {
+    const unit = p[1] === "new" ? p.slice(2).join("/") : REGS.get(p[1])?.unit || draft?.unit;
+    return unit ? "/u/" + encodeURIComponent(unit) : "/";
+  }
+  if (p[0] === "u") {
+    const u = UNITS.get(p.slice(1).join("/")); if (!u) return "/";
+    const f = u.f.includes(lastFloor[u.o]) ? lastFloor[u.o] : u.f[0];
+    return `/o/${encodeURIComponent(u.o)}/e/${encodeURIComponent(f)}`;
+  }
+  if (p[0] === "o" && p[2] === "e") return "/o/" + encodeURIComponent(p[1]);
+  if (p[0] === "ov" && p[1]) return "/o/" + encodeURIComponent(p[1]);
+  if (p[0] === "rapport" || p[0] === "ov") return "/menu";
+  return "/";
+}
+// Tilbage går ét niveau op (dåse → bolig → etage → opgang → oversigt) i stedet for gennem historikken
+$("#btnBack").onclick = () => location.replace("#" + parentRoute());
+$("#btnHome").onclick = () => location.replace("#/");
 $("#btnMenu").onclick = () => go("/menu");
 
 function setTop(title, sub = "", back = true) {
   $("#title").textContent = title;
   $("#subtitle").textContent = sub;
   $("#btnBack").hidden = !back;
+  $("#btnHome").hidden = !back;
   document.title = title === "SP2 Dåsekontrol" ? title : `${title} – SP2`;
 }
 
@@ -253,6 +281,7 @@ function bindTagNote(opgId) {
 /* ---------------- Etage ---------------- */
 async function viewFloor(m, opgId, floor) {
   setTop(`${opgId} · ${floor}`, "Vælg bolig");
+  lastFloor[opgId] = floor;
   const us = unitsOn(opgId, floor);
   const pl = plansFor(opgId, floor);
   let h = pl.length
@@ -295,7 +324,7 @@ async function viewUnit(m, unitId) {
     h += `<button class="row" data-go="/d/${encodeURIComponent(r.id)}"><div class="main">
       <div class="name">Dåse ${i + 1} · ${esc(typeLabel(r))}</div>
       <div class="sub">${esc(r.room || "Intet rum angivet")} · ${r.photos.length} billede${r.photos.length === 1 ? "" : "r"}</div>
-      <div>${r.devBox ? `<span class="badge b-afv">Afv. dåse</span>` : `<span class="badge b-ok">Dåse OK</span>`}${r.devPipe ? `<span class="badge b-afv">Afv. rør</span>` : `<span class="badge b-ok">Rør OK</span>`}</div>
+      <div>${r.devBox ? `<span class="badge b-afv">Afv. dåse</span>` : `<span class="badge b-ok">Dåse OK</span>`}${r.devPipe ? `<span class="badge b-afv">Afv. rør</span>` : `<span class="badge b-ok">Rør OK</span>`}${r.devOther ? `<span class="badge b-afv">Anden afv.</span>` : ""}</div>
       </div><span class="chev">›</span></button>`;
   });
   h += `</div>`;
@@ -318,14 +347,15 @@ async function viewUnit(m, unitId) {
 let draft = null; // registrering under redigering
 function blankReg(unitId) {
   const u = UNITS.get(unitId);
-  return { id: uid(), unit: unitId, opg: u.o, floor: u.f[0], type: "", typeOther: "", room: "", devBox: false, devBoxNote: "", devPipe: false, devPipeNote: "", photos: [], created: nowIso(), updated: nowIso(), saved: false };
+  return { id: uid(), unit: unitId, opg: u.o, floor: u.f[0], type: "", types: [], typeOther: "", room: "", devBox: false, devBoxNote: "", devPipe: false, devPipeNote: "", devOther: false, devOtherNote: "", photos: [], created: nowIso(), updated: nowIso(), saved: false };
 }
-const regHasContent = (r) => r.type || r.room.trim() || r.devBox || r.devPipe || r.devBoxNote.trim() || r.devPipeNote.trim() || r.photos.length;
+const regHasContent = (r) => r.types.length || r.room.trim() || r.devBox || r.devPipe || r.devOther || r.devBoxNote.trim() || r.devPipeNote.trim() || r.devOtherNote.trim() || r.photos.length;
 async function saveDraft() {
   if (!draft) return;
   if (!draft.saved && !regHasContent(draft)) return;
   draft.updated = nowIso(); draft.saved = true;
-  const copy = { ...draft, photos: [...draft.photos] };
+  draft.type = draft.types.join(", "); // læsbar tekst til ældre versioner/backup
+  const copy = { ...draft, photos: [...draft.photos], types: [...draft.types] };
   REGS.set(copy.id, copy);
   await dbPut("regs", copy);
   const p = parseRoute();
@@ -341,16 +371,16 @@ async function viewReg(m, idOrNew, unitArg) {
   } else {
     const r = REGS.get(idOrNew);
     if (!r) { m.innerHTML = `<div class="card">Registreringen findes ikke (måske slettet).</div>`; return; }
-    if (!draft || draft.id !== r.id) draft = { ...r, photos: [...r.photos] };
+    if (!draft || draft.id !== r.id) { normReg(r); draft = { ...r, photos: [...r.photos], types: [...r.types] }; }
   }
   const r = draft, u = UNITS.get(r.unit);
   const idx = regsOf(u.id).findIndex((x) => x.id === r.id);
   setTop(`${u.o} · ${unitName(u)}`, idx >= 0 ? `Dåse ${idx + 1}` : "Ny dåse");
-  const rooms = [...new Set([...u.r, ...DEFAULT_ROOMS, ...regsOf(u.id).map((x) => x.room).filter(Boolean)])];
+  const rooms = [...new Set(["Alle rum", ...u.r, ...DEFAULT_ROOMS, ...regsOf(u.id).map((x) => x.room).filter(Boolean)])];
   m.innerHTML = `
-    <label class="lbl">Type</label>
-    <div class="types">${TYPES.map((t) => `<button class="typebtn ${r.type === t ? "on" : ""}" data-type="${t}">${t}</button>`).join("")}</div>
-    <div id="otherBox" ${r.type === "Andet" ? "" : "hidden"}><label class="lbl" for="fOther">Hvilken type?</label>
+    <label class="lbl">Type <span class="small muted">(vælg en eller flere)</span></label>
+    <div class="types">${TYPES.map((t) => `<button class="typebtn ${r.types.includes(t) ? "on" : ""}" data-type="${t}">${t}</button>`).join("")}</div>
+    <div id="otherBox" ${r.types.includes("Andet") ? "" : "hidden"}><label class="lbl" for="fOther">Hvilken type?</label>
       <input type="text" id="fOther" value="${esc(r.typeOther)}" autocomplete="off"></div>
     <label class="lbl" for="fRoom">Rum</label>
     <input type="text" id="fRoom" value="${esc(r.room)}" placeholder="Fx Køkken/alrum" autocomplete="off">
@@ -361,6 +391,8 @@ async function viewReg(m, idOrNew, unitArg) {
       <textarea id="fBoxNote" placeholder="Note om dåsen">${esc(r.devBoxNote)}</textarea></div>
     <div class="devblock">${checkHtml("devPipe", "Afvigelse rør", r.devPipe)}
       <textarea id="fPipeNote" placeholder="Note om rør">${esc(r.devPipeNote)}</textarea></div>
+    <div class="devblock">${checkHtml("devOther", CHECKS.devOther, r.devOther)}
+      <textarea id="fOtherNote" placeholder="Note om anden afvigelse">${esc(r.devOtherNote)}</textarea></div>
 
     <label class="lbl">Billeder (${r.photos.length})</label>
     <div class="thumbs" id="thumbs"></div>
@@ -378,23 +410,20 @@ async function viewReg(m, idOrNew, unitArg) {
   renderThumbs();
 
   m.querySelectorAll("[data-type]").forEach((b) => b.onclick = () => {
-    r.type = r.type === b.dataset.type ? "" : b.dataset.type;
-    m.querySelectorAll("[data-type]").forEach((x) => x.classList.toggle("on", x.dataset.type === r.type));
-    $("#otherBox").hidden = r.type !== "Andet";
-    if (r.type === "Andet") $("#fOther").focus();
+    const t = b.dataset.type;
+    r.types = r.types.includes(t) ? r.types.filter((x) => x !== t) : TYPES.filter((x) => x === t || r.types.includes(x));
+    b.classList.toggle("on", r.types.includes(t));
+    $("#otherBox").hidden = !r.types.includes("Andet");
+    if (t === "Andet" && r.types.includes("Andet")) $("#fOther").focus();
     saveSoon();
   });
   $("#fOther").oninput = (e) => { r.typeOther = e.target.value; saveSoon(); };
   $("#fRoom").oninput = (e) => { r.room = e.target.value; m.querySelectorAll("[data-room]").forEach((x) => x.classList.toggle("on", x.dataset.room === r.room)); saveSoon(); };
   m.querySelectorAll("[data-room]").forEach((b) => b.onclick = () => { r.room = b.dataset.room; $("#fRoom").value = r.room; m.querySelectorAll("[data-room]").forEach((x) => x.classList.toggle("on", x === b)); saveSoon(); });
-  m.querySelectorAll("[data-check]").forEach((b) => b.onclick = () => {
-    const k = b.dataset.check; r[k] = !r[k];
-    b.outerHTML = checkHtml(k, k === "devBox" ? "Afvigelse dåse" : "Afvigelse rør", r[k]);
-    viewRegRebindChecks(m, r);
-    saveSoon();
-  });
+  viewRegRebindChecks(m, r);
   $("#fBoxNote").oninput = (e) => { r.devBoxNote = e.target.value; saveSoon(); };
   $("#fPipeNote").oninput = (e) => { r.devPipeNote = e.target.value; saveSoon(); };
+  $("#fOtherNote").oninput = (e) => { r.devOtherNote = e.target.value; saveSoon(); };
   $("#bPhoto").onclick = () => $("#fFile").click();
   $("#fFile").onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = "";
@@ -430,7 +459,7 @@ function checkHtml(key, label, on) {
 function viewRegRebindChecks(m, r) {
   m.querySelectorAll("[data-check]").forEach((b) => b.onclick = () => {
     const k = b.dataset.check; r[k] = !r[k];
-    b.outerHTML = checkHtml(k, k === "devBox" ? "Afvigelse dåse" : "Afvigelse rør", r[k]);
+    b.outerHTML = checkHtml(k, CHECKS[k], r[k]);
     viewRegRebindChecks(m, r); saveSoon();
   });
 }
@@ -489,7 +518,7 @@ async function viewOverview(m, opgId) {
         <div class="tablewrap"><table class="sumtable"><tr><th>Bolig</th><th>Dåser</th><th>Afv.</th><th>Typer</th></tr>`;
       for (const u of us) {
         const regs = regsOf(u.id), su = stats(regs);
-        const types = {}; regs.forEach((r) => { const t = typeLabel(r); types[t] = (types[t] || 0) + 1; });
+        const types = {}; regs.forEach((r) => typeParts(r).forEach((t) => { types[t] = (types[t] || 0) + 1; }));
         h += `<tr data-go="/u/${encodeURIComponent(u.id)}"><td><b>${esc(unitName(u))}</b>${isProposed(u) ? " <span class='badge b-prop'>foreslået</span>" : ""}<div class="small muted">${u.real ? "Side " + esc(u.id) : ""}</div></td>
           <td class="n">${su.n || "–"}</td><td class="n">${su.dev ? `<span class="badge b-afv">${su.dev}</span>` : "–"}</td>
           <td class="small">${Object.entries(types).map(([t, n]) => `${esc(t)} ${n}`).join(", ")}</td></tr>`;
@@ -731,12 +760,12 @@ function allRegsSorted(filterOpg) {
 }
 async function exportCsv() {
   const q = (v) => { v = String(v ?? ""); return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
-  const rows = [["Bygning", "Opgang", "Etage", "Bolig", "Navn foreslået", "Tegning side", "Dåse nr.", "Type", "Rum", "Dåse", "Note dåse", "Rør", "Note rør", "Antal billeder", "Oprettet", "Senest ændret"]];
+  const rows = [["Bygning", "Opgang", "Etage", "Bolig", "Navn foreslået", "Tegning side", "Dåse nr.", "Type", "Rum", "Dåse", "Note dåse", "Rør", "Note rør", "Anden afvigelse", "Note anden afvigelse", "Antal billeder", "Oprettet", "Senest ændret"]];
   const counters = {};
   for (const r of allRegsSorted()) {
     const u = UNITS.get(r.unit); counters[r.unit] = (counters[r.unit] || 0) + 1;
     rows.push([u.b, u.o, u.f.join("–"), unitName(u), isProposed(u) ? "ja" : "", u.real ? u.id : "", counters[r.unit], typeLabel(r), r.room,
-      r.devBox ? "AFVIGELSE" : "OK", r.devBoxNote, r.devPipe ? "AFVIGELSE" : "OK", r.devPipeNote, r.photos.length, fmtDate(r.created), fmtDate(r.updated)]);
+      r.devBox ? "AFVIGELSE" : "OK", r.devBoxNote, r.devPipe ? "AFVIGELSE" : "OK", r.devPipeNote, r.devOther ? "AFVIGELSE" : "", r.devOtherNote, r.photos.length, fmtDate(r.created), fmtDate(r.updated)]);
   }
   rows.push([]); rows.push(["Tagnoter"]);
   for (const [o, t] of Object.entries(TAG)) if (t && t.trim()) rows.push(["", o, "Tag", "", "", "", "", "", "", "", t]);
@@ -822,7 +851,7 @@ async function reportHtml(o, embed) {
       if (curUnit) h += `</table>`;
       curUnit = r.unit;
       h += `<h3>${esc(u.o)} · ${esc(u.f.join("–"))} · ${esc(unitName(u))}${isProposed(u) ? " (foreslået navn)" : ""}${u.real ? ` · tegning side ${esc(u.id)}` : ""}</h3>
-        <table><tr><th style="width:34px">Nr.</th><th style="width:22%">Type / rum</th><th>Dåse</th><th>Rør</th></tr>`;
+        <table><tr><th style="width:34px">Nr.</th><th style="width:22%">Type / rum</th><th>Dåse</th><th>Rør</th><th>Anden afvigelse</th></tr>`;
     }
     let ph = "";
     if (o.photos === "all" || (o.photos === "dev" && isDev(r))) {
@@ -834,8 +863,9 @@ async function reportHtml(o, embed) {
     }
     h += `<tr><td>${r._nr}</td><td><b>${esc(typeLabel(r))}</b><br>${esc(r.room)}</td>
       <td>${r.devBox ? `<span class="afv">AFVIGELSE</span>` : "OK"}${r.devBoxNote ? `<br>${esc(r.devBoxNote)}` : ""}</td>
-      <td>${r.devPipe ? `<span class="afv">AFVIGELSE</span>` : "OK"}${r.devPipeNote ? `<br>${esc(r.devPipeNote)}` : ""}</td></tr>
-      ${ph ? `<tr><td></td><td colspan="3"><div class="ph">${ph}</div></td></tr>` : ""}`;
+      <td>${r.devPipe ? `<span class="afv">AFVIGELSE</span>` : "OK"}${r.devPipeNote ? `<br>${esc(r.devPipeNote)}` : ""}</td>
+      <td>${r.devOther ? `<span class="afv">AFVIGELSE</span>` : "–"}${r.devOtherNote ? `<br>${esc(r.devOtherNote)}` : ""}</td></tr>
+      ${ph ? `<tr><td></td><td colspan="4"><div class="ph">${ph}</div></td></tr>` : ""}`;
     n++;
   }
   if (curUnit) h += `</table>`;
@@ -914,6 +944,7 @@ async function restoreBackup(file) {
     }
     for (const r of data.regs) {
       const ex = await dbGet("regs", r.id);
+      normReg(r);
       if (!ex) { await dbPut("regs", r); added++; }
       else if ((r.updated || "") > (ex.updated || "")) { await dbPut("regs", { ...r, photos: [...new Set([...r.photos, ...ex.photos])] }); updated++; }
     }

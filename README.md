@@ -29,7 +29,9 @@ Hvis du hellere vil bruge **GitHub Desktop**, kan du kopiere indholdet af de fir
 ## Daglig brug
 
 - Vælg opgang, så etage og så bolig, og tryk **＋ Ny dåse**. Alt gemmes automatisk.
-- Ikke afkrydset betyder OK. Sæt flueben ved "Afvigelse dåse" eller "Afvigelse rør", og skriv en note.
+- **‹** går ét niveau op: dåse → bolig → etage → opgang → oversigt. **Hjem** går direkte til oversigten over alle opgange.
+- Du kan vælge flere typer på samme dåse, fx Lampeudtag + Stikkontakt. "Generelt" og "Alle rum" kan bruges til ting, der gælder hele boligen.
+- Ikke afkrydset betyder OK. Sæt flueben ved "Afvigelse dåse", "Afvigelse rør" eller "Anden afvigelse", og skriv en note.
 - **Tegning** åbner boligens tegning zoomet ind på planen. Brug to fingre til at zoome, træk for at flytte og dobbelttryk for at zoome ind/ud. **Hele ark** viser hele arket med titelfeltet, og **Signatur** viser signaturforklaringen.
 - Boligernes navne (tv./th. osv.) er **foreslåede**, fordi tegningerne ikke viser siden. Ret dem på stedet med **Ret navn**, eller tryk **Navnet er rigtigt**.
 - Noter om tag findes på hver opgang og under etagen "Tag".
