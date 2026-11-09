@@ -98,7 +98,9 @@ const BUILDINGS = window.SP2_BUILDINGS;
 })();
 const unitsOn = (opgId, floor) => {
   const o = OPG.get(opgId);
-  const list = o.units.filter((u) => u.f.includes(floor));
+  // tv. – mf. – th. i den rækkefølge, ellers efter tegningens sidenummer
+  const rank = (u) => { const n = unitName(u); return /\btv\./.test(n) ? 0 : /\bmf\./.test(n) ? 1 : /\bth\./.test(n) ? 2 : 3; };
+  const list = o.units.filter((u) => u.f.includes(floor)).sort((a, b) => rank(a) - rank(b) || parseInt(a.id.split("-")[1]) - parseInt(b.id.split("-")[1]));
   list.push(UNITS.get(`F|${opgId}|${floor}`));
   return list;
 };
