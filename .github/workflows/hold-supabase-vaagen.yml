@@ -1,0 +1,25 @@
+# Holder Supabase-projektet vågent: sender en lille forespørgsel hver 3. dag,
+# så den gratis plan ikke sætter projektet på pause efter 7 dages inaktivitet.
+# Læser url og key fra config.js. Gør intet, så længe de er tomme.
+name: Hold Supabase vågen
+on:
+  schedule:
+    - cron: "17 6 */3 * *"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Send forespørgsel
+        run: |
+          URL=$(grep -oP 'url:\s*"\K[^"]*' config.js || true)
+          KEY=$(grep -oP 'key:\s*"\K[^"]*' config.js || true)
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then echo "Deling er ikke sat op endnu – springer over."; exit 0; fi
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$URL/rest/v1/regs?select=id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+            echo "Svar: $code"
+            [ "$code" -lt 500 ] && [ "$code" != "000" ] && exit 0
+            sleep 30
+          done
+          echo "Supabase svarede ikke – projektet er måske sat på pause. Log ind på supabase.com og tryk Resume."; exit 1
