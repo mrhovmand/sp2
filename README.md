@@ -38,6 +38,12 @@ Hvis du hellere vil bruge **GitHub Desktop**, kan du kopiere indholdet af de fir
 - Hver etage har også "Trappe / fællesareal", og kælder har "Kælder / fællesareal".
 - Etager med en etage- eller kældertegning viser 📐-knapper øverst. I tegningsviseren skifter **Tegninger ▾** mellem boligtegning, etageplan, kælder, oversigtsplan og signaturforklaring. **Hele ark** viser hele arket med signaturer og titelfelt.
 
+## Deling med holdet og materialeliste
+
+- Appen kan dele registreringer, billeder, navne, tagnoter og materialelisten mellem flere telefoner via Supabase (gratis). Opsætning: se `supabase/VEJLEDNING.md`. Derefter udfyldes `config.js` med Project URL og publishable key.
+- Hver bruger skriver sit navn og den fælles kode én gang på forsiden. Alt gemmes stadig først på telefonen og deles, når der er dækning.
+- Materialelisten ligger øverst på forsiden. Tryk på den for at tilføje, krydse af eller slette linjer.
+
 ## Rapport, CSV og backup
 
 - **Menu → Rapport:** Vælg omfang, hvilke afvigelser der skal med (dåse, rør/udsparing, anden afvigelse), om registreringer uden afvigelse skal med, og billeder. Tryk så **Udskriv / gem som PDF**. Virker print ikke, så brug "Gem rapport som fil" og åbn filen i Safari.

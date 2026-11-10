@@ -5,11 +5,11 @@
  * og røres ALDRIG af service workeren. Tegninger ligger i deres egen cache
  * (DRAW_CACHE), som heller ikke slettes ved opdatering.
  */
-const VERSION = "1.3.3";
+const VERSION = "1.4.0";
 const SHELL_CACHE = "sp2-app-" + VERSION;
 const DRAW_CACHE = "sp2-tegninger-v1"; // skift kun navn hvis tegningerne udskiftes
 const SHELL = [
-  "./", "index.html", "style.css", "app.js", "data.js", "manifest.webmanifest",
+  "./", "index.html", "style.css", "app.js", "data.js", "sync.js", "config.js", "manifest.webmanifest",
   "ikoner/icon-192.png", "ikoner/icon-512.png", "ikoner/apple-touch-icon.png"
 ];
 

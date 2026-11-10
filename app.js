@@ -210,6 +210,7 @@ async function render() {
     if (p[0] === "ov") return viewOverview(m, p[1]);
     if (p[0] === "menu") return viewMenu(m);
     if (p[0] === "rapport") return viewReport(m);
+    if (p[0] === "materialer") return viewMaterials(m);
     return viewHome(m);
   } catch (e) { console.error(e); m.innerHTML = `<div class="card">Der skete en fejl: ${esc(e.message)}</div>`; }
 }
@@ -222,7 +223,10 @@ async function viewHome(m) {
   const nudge = await backupNudge();
   if (my !== renderSeq) return;
   const total = ALL_DRAWINGS().length;
-  let h = `<div class="status small">${cached >= total
+  const mats = await metaGet("materials", {});
+  if (my !== renderSeq) return;
+  let h = homeSyncHtml() + materialsCardHtml(mats);
+  h += `<div class="status small">${cached >= total
     ? `✅ Alle ${total} tegninger er gemt på telefonen.`
     : `Tegninger gemt offline: <b>${cached} / ${total}</b><div class="btnrow"><button class="btn yellow small" id="hHent">Hent alle tegninger</button></div>`}
     ${nudge}</div>`;
@@ -240,9 +244,83 @@ async function viewHome(m) {
   }
   m.innerHTML = h;
   const hb = $("#hHent"); if (hb) hb.onclick = () => go("/menu");
+  bindLoginCard();
 }
+/* ---------------- Deling: login-kort og status på forsiden ---------------- */
+let loginSkipped = false;
+function homeSyncHtml() {
+  if (!syncConfigured()) return "";
+  if (SESSION) return `<div class="small" id="syncLine" style="margin:0 4px 10px">${esc(syncStatusText())}</div>`;
+  if (loginSkipped) return `<div class="small" style="margin:0 4px 10px"><button class="chip" id="showLogin">⚪ Ikke forbundet – tryk for at skrive fælles kode</button></div>`;
+  return `<div class="card" id="loginCard"><b>Del registreringer med holdet</b>
+    <div class="small muted">Skriv den fælles kode én gang. Så ser I hinandens registreringer, navne, tagnoter og materialeliste.</div>
+    <label class="lbl" for="lgName">Dit navn</label><input type="text" id="lgName" value="${esc(MY_NAME)}" placeholder="Fx Tommy" autocomplete="name">
+    <label class="lbl" for="lgCode">Fælles kode</label><input type="text" id="lgCode" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+    <div class="btnrow"><button class="btn primary" id="lgGo">Forbind</button></div>
+    <div class="btnrow"><button class="btn small" id="lgSkip">Ikke nu</button></div>
+    <div class="small" id="lgMsg"></div></div>`;
+}
+function bindLoginCard() {
+  const sl = $("#showLogin"); if (sl) sl.onclick = () => { loginSkipped = false; render(); };
+  const go_ = $("#lgGo"); if (!go_) return;
+  $("#lgSkip").onclick = () => { loginSkipped = true; render(); };
+  go_.onclick = async () => {
+    const code = $("#lgCode").value.trim(), name = $("#lgName").value.trim();
+    if (!code) return toast("Skriv den fælles kode");
+    if (!navigator.onLine) return toast("Der skal være dækning første gang");
+    go_.disabled = true; $("#lgMsg").textContent = "Forbinder …";
+    try { await syncLogin(code, name); toast("Forbundet – deler med holdet"); render(); }
+    catch (e) { go_.disabled = false; $("#lgMsg").textContent = e.status === 400 ? "Forkert kode – prøv igen." : "Kunne ikke forbinde: " + e.message; }
+  };
+}
+
+/* ---------------- Materialeliste ---------------- */
+const openMats = (mats) => Object.values(mats).filter((x) => !x.deleted && !x.done).sort((a, b) => a.created.localeCompare(b.created));
+function materialsCardHtml(mats) {
+  const open = openMats(mats);
+  const lines = open.slice(0, 3).map((x) => `<div class="matline">• ${esc(x.text)}</div>`).join("");
+  return `<button class="card matcard" data-go="/materialer"><div class="mattitle"><b>Materialeliste</b><span class="count ${open.length ? "has" : ""}">${open.length}</span></div>
+    ${lines || `<div class="matline muted">Tom – tryk for at tilføje</div>`}${open.length > 3 ? `<div class="matline muted">+ ${open.length - 3} mere …</div>` : ""}</button>`;
+}
+function saveMat(item) {
+  return locked(async () => {
+    const mats = await metaGet("materials", {});
+    item.updated = nowIso(); item.dirty = true; mats[item.id] = { ...item };
+    await metaSet("materials", mats);
+  }).then(() => syncSoon(1500));
+}
+async function viewMaterials(m) {
+  const my = renderSeq;
+  setTop("Materialeliste", syncConfigured() ? "Delt med holdet" : "");
+  const mats = await metaGet("materials", {});
+  if (my !== renderSeq) return;
+  const open = openMats(mats);
+  const done = Object.values(mats).filter((x) => !x.deleted && x.done).sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
+  const row = (x) => `<div class="matrow">
+      <button class="check ${x.done ? "on done" : ""}" data-mtog="${esc(x.id)}"><span class="box">${x.done ? "✓" : ""}</span><span class="mattext">${esc(x.text)}<span class="small muted">${x.by ? esc(x.by) + " · " : ""}${fmtDate(x.created)}</span></span></button>
+      <button class="btn danger matdel" data-mdel="${esc(x.id)}" aria-label="Slet">✕</button></div>`;
+  m.innerHTML = `
+    <div class="matadd"><input type="text" id="matText" placeholder="Fx 100 m PVL 3G1,5, clips, skruer …" enterkeyhint="done" autocomplete="off">
+      <button class="btn primary" id="matAdd">Tilføj</button></div>
+    <h2>Mangler (${open.length})</h2>
+    <div class="list">${open.map(row).join("") || `<p class="muted">Intet på listen.</p>`}</div>
+    ${done.length ? `<h2>Afkrydset (${done.length})</h2><div class="list">${done.map(row).join("")}</div>
+      <div class="btnrow"><button class="btn small" id="matClear">Ryd afkrydsede</button></div>` : ""}
+    ${syncConfigured() ? `<p class="small muted" id="syncLine">${esc(syncStatusText())}</p>` : ""}`;
+  const add = async () => {
+    const t = $("#matText").value.trim(); if (!t) return $("#matText").focus();
+    await saveMat({ id: uid(), text: t, done: false, by: MY_NAME || "", created: nowIso() });
+    await viewMaterials(m); $("#matText").focus();
+  };
+  $("#matAdd").onclick = add;
+  $("#matText").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); add(); } };
+  m.querySelectorAll("[data-mtog]").forEach((b) => b.onclick = async () => { const x = mats[b.dataset.mtog]; x.done = !x.done; await saveMat(x); viewMaterials(m); });
+  m.querySelectorAll("[data-mdel]").forEach((b) => b.onclick = async () => { const x = mats[b.dataset.mdel]; x.deleted = true; await saveMat(x); viewMaterials(m); });
+  const c = $("#matClear"); if (c) c.onclick = async () => { if (!(await confirmBox(`Slet ${done.length} afkrydsede linjer?`, "Slet"))) return; for (const x of done) { x.deleted = true; await saveMat(x); } viewMaterials(m); };
+}
+
 async function backupNudge() {
-  if (!REGS.size) return "";
+  if (!REGS.size || (syncConfigured() && SESSION)) return "";
   const last = await metaGet("lastBackup", null);
   const days = last ? (Date.now() - new Date(last)) / 864e5 : 999;
   if (days < 7) return "";
@@ -275,7 +353,7 @@ function tagNoteHtml(opgId) {
 function bindTagNote(opgId) {
   const t = $("#tagNote"); if (!t) return;
   let tm;
-  t.oninput = () => { clearTimeout(tm); tm = setTimeout(async () => { TAG[opgId] = t.value; await metaSet("tag", TAG); $("#tagSaved").textContent = "Gemt " + new Date().toLocaleTimeString("da-DK"); }, 400); };
+  t.oninput = () => { clearTimeout(tm); tm = setTimeout(async () => { TAG[opgId] = t.value; await metaSet("tag", TAG); markMetaDirty("tag:" + opgId); $("#tagSaved").textContent = "Gemt " + new Date().toLocaleTimeString("da-DK"); }, 400); };
 }
 
 /* ---------------- Etage ---------------- */
@@ -323,7 +401,7 @@ async function viewUnit(m, unitId) {
   regs.forEach((r, i) => {
     h += `<button class="row" data-go="/d/${encodeURIComponent(r.id)}"><div class="main">
       <div class="name">Registrering ${i + 1} · ${esc(typeLabel(r))}</div>
-      <div class="sub">${esc(r.room || "Intet rum angivet")} · ${r.photos.length} billede${r.photos.length === 1 ? "" : "r"}</div>
+      <div class="sub">${esc(r.room || "Intet rum angivet")} · ${r.photos.length} billede${r.photos.length === 1 ? "" : "r"}${r.by ? ` · ${esc(r.by)}` : ""}</div>
       <div>${r.devBox ? `<span class="badge b-afv">Afv. dåse</span>` : `<span class="badge b-ok">Dåse OK</span>`}${r.devPipe ? `<span class="badge b-afv">Afv. rør/udsp.</span>` : `<span class="badge b-ok">Rør/udsp. OK</span>`}${r.devOther ? `<span class="badge b-afv">Anden afv.</span>` : ""}</div>
       </div><span class="chev">›</span></button>`;
   });
@@ -332,14 +410,14 @@ async function viewUnit(m, unitId) {
   if (u.f.includes("Tag")) bindTagNote(u.o);
   if (u.real) {
     $("#uRename").onclick = () => { $("#renameBox").hidden = false; $("#uName").focus(); };
-    const c = $("#uConfirm"); if (c) c.onclick = async () => { CONFIRMED[u.id] = true; await metaSet("confirmed", CONFIRMED); render(); };
+    const c = $("#uConfirm"); if (c) c.onclick = async () => { CONFIRMED[u.id] = true; await metaSet("confirmed", CONFIRMED); markMetaDirty("conf:" + u.id); render(); };
     $("#uSave").onclick = async () => {
       const v = $("#uName").value.trim();
       if (!v) return toast("Skriv et navn");
       if (v === u.n) { delete NAMES[u.id]; CONFIRMED[u.id] = true; } else NAMES[u.id] = v;
-      await metaSet("names", NAMES); await metaSet("confirmed", CONFIRMED); toast("Navn gemt"); render();
+      await metaSet("names", NAMES); await metaSet("confirmed", CONFIRMED); markMetaDirty("name:" + u.id); markMetaDirty("conf:" + u.id); toast("Navn gemt"); render();
     };
-    $("#uReset").onclick = async () => { delete NAMES[u.id]; delete CONFIRMED[u.id]; await metaSet("names", NAMES); await metaSet("confirmed", CONFIRMED); render(); };
+    $("#uReset").onclick = async () => { delete NAMES[u.id]; delete CONFIRMED[u.id]; await metaSet("names", NAMES); await metaSet("confirmed", CONFIRMED); markMetaDirty("name:" + u.id); markMetaDirty("conf:" + u.id); render(); };
   }
 }
 
@@ -347,7 +425,7 @@ async function viewUnit(m, unitId) {
 let draft = null; // registrering under redigering
 function blankReg(unitId) {
   const u = UNITS.get(unitId);
-  return { id: uid(), unit: unitId, opg: u.o, floor: u.f[0], type: "", types: [], typeOther: "", room: "", devBox: false, devBoxNote: "", devPipe: false, devPipeNote: "", devOther: false, devOtherNote: "", photos: [], created: nowIso(), updated: nowIso(), saved: false };
+  return { id: uid(), unit: unitId, opg: u.o, floor: u.f[0], type: "", types: [], typeOther: "", room: "", devBox: false, devBoxNote: "", devPipe: false, devPipeNote: "", devOther: false, devOtherNote: "", photos: [], by: MY_NAME || "", created: nowIso(), updated: nowIso(), saved: false };
 }
 const regHasContent = (r) => r.types.length || r.room.trim() || r.devBox || r.devPipe || r.devOther || r.devBoxNote.trim() || r.devPipeNote.trim() || r.devOtherNote.trim() || r.photos.length;
 async function saveDraft() {
@@ -355,9 +433,10 @@ async function saveDraft() {
   if (!draft.saved && !regHasContent(draft)) return;
   draft.updated = nowIso(); draft.saved = true;
   draft.type = draft.types.join(", "); // læsbar tekst til ældre versioner/backup
-  const copy = { ...draft, photos: [...draft.photos], types: [...draft.types] };
+  const copy = { ...draft, photos: [...draft.photos], types: [...draft.types], dirty: true };
   REGS.set(copy.id, copy);
   await dbPut("regs", copy);
+  syncSoon();
   const p = parseRoute();
   if (p[0] === "d" && p[1] === "new") history.replaceState(null, "", "#/d/" + encodeURIComponent(draft.id));
 }
@@ -448,7 +527,7 @@ async function viewReg(m, idOrNew, unitArg) {
   };
   $("#bDel").onclick = async () => {
     if (!(await confirmBox("Slet denne registrering og dens billeder?", "Slet registrering"))) return;
-    if (REGS.has(r.id)) { for (const pid of r.photos) await dbDel("photos", pid); await dbDel("regs", r.id); REGS.delete(r.id); }
+    if (REGS.has(r.id)) { for (const pid of r.photos) await dbDel("photos", pid); await dbDel("regs", r.id); REGS.delete(r.id); if (syncConfigured()) await markRegDeleted(r.id); }
     const uidd = r.unit; draft = null; toast("Registrering slettet");
     go("/u/" + encodeURIComponent(uidd));
   };
@@ -469,8 +548,8 @@ async function renderThumbs() {
   thumbUrls.splice(0).forEach(URL.revokeObjectURL);
   box.innerHTML = "";
   for (const pid of draft.photos) {
-    const p = await dbGet("photos", pid);
-    if (!p) continue;
+    const p = await getPhoto(pid);
+    if (!p) { const b = document.createElement("button"); b.innerHTML = `<span class="small muted">Billedet hentes, når der er dækning</span>`; box.appendChild(b); continue; }
     const url = URL.createObjectURL(p.blob); thumbUrls.push(url);
     const b = document.createElement("button");
     b.innerHTML = `<img src="${url}" alt="Billede">`;
@@ -562,6 +641,12 @@ async function viewMenu(m) {
       <progress id="cProg" max="${total}" value="${cached}"></progress>
       <div class="btnrow"><button class="btn yellow" id="mHent">Hent alle tegninger (ca. 50 MB)</button></div>
       <div class="small muted">Gør det på wifi. Appen selv gemmes automatisk. ${esc(est)}${persisted ? " · Lagring er markeret som varig." : ""}</div></div>
+    ${syncConfigured() ? `<h2>Deling med holdet</h2>
+    <div class="card"><div id="syncLine">${esc(syncStatusText())}</div>
+      ${SESSION ? `<div class="small muted" style="margin-top:6px">Dit navn: <b>${esc(MY_NAME || "ikke angivet")}</b></div>
+      <div class="btnrow"><button class="btn small primary" id="mSync">Del nu</button><button class="btn small" id="mName">Skift navn</button></div>
+      <div class="btnrow"><button class="btn small danger" id="mLogout">Afbryd deling på denne telefon</button></div>`
+      : `<div class="btnrow"><button class="btn small primary" data-go="/">Skriv fælles kode på forsiden</button></div>`}</div>` : ""}
     <h2>Overblik og rapport</h2>
     <div class="list">
       <button class="btn" data-go="/ov">Overblik – alle opgange</button>
@@ -582,6 +667,9 @@ async function viewMenu(m) {
       <div class="btnrow"><button class="btn small" id="mUpd">Søg efter ny version</button></div></div>`;
   swVersion().then((v) => { const e = $("#mVer"); if (e) e.textContent = v || "ukendt"; });
   $("#mHent").onclick = downloadAll;
+  const ms = $("#mSync"); if (ms) ms.onclick = () => syncNow();
+  const mn = $("#mName"); if (mn) mn.onclick = async () => { const v = prompt("Dit navn (vises ved dine registreringer og materialer)", MY_NAME); if (v !== null) { MY_NAME = v.trim(); await metaSet("myName", MY_NAME); render(); } };
+  const ml = $("#mLogout"); if (ml) ml.onclick = async () => { if (await confirmBox("Afbryd deling på denne telefon? Dine registreringer bliver liggende her. Ændringer, der ikke er delt endnu, bliver først delt, når koden skrives igen.", "Afbryd deling")) { await syncLogout(); render(); } };
   $("#mCsv").onclick = exportCsv;
   $("#mBackup").onclick = makeBackup;
   $("#mRestore").onclick = () => $("#mRestoreFile").click();
@@ -760,12 +848,12 @@ function allRegsSorted(filterOpg) {
 }
 async function exportCsv() {
   const q = (v) => { v = String(v ?? ""); return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
-  const rows = [["Bygning", "Opgang", "Etage", "Bolig", "Navn foreslået", "Tegning side", "Registrering nr.", "Type", "Rum", "Dåse", "Note dåse", "Rør/udsparing", "Note rør/udsparing", "Anden afvigelse", "Note anden afvigelse", "Antal billeder", "Oprettet", "Senest ændret"]];
+  const rows = [["Bygning", "Opgang", "Etage", "Bolig", "Navn foreslået", "Tegning side", "Registrering nr.", "Type", "Rum", "Dåse", "Note dåse", "Rør/udsparing", "Note rør/udsparing", "Anden afvigelse", "Note anden afvigelse", "Antal billeder", "Registreret af", "Oprettet", "Senest ændret"]];
   const counters = {};
   for (const r of allRegsSorted()) {
     const u = UNITS.get(r.unit); counters[r.unit] = (counters[r.unit] || 0) + 1;
     rows.push([u.b, u.o, u.f.join("–"), unitName(u), isProposed(u) ? "ja" : "", u.real ? u.id : "", counters[r.unit], typeLabel(r), r.room,
-      r.devBox ? "AFVIGELSE" : "OK", r.devBoxNote, r.devPipe ? "AFVIGELSE" : "OK", r.devPipeNote, r.devOther ? "AFVIGELSE" : "", r.devOtherNote, r.photos.length, fmtDate(r.created), fmtDate(r.updated)]);
+      r.devBox ? "AFVIGELSE" : "OK", r.devBoxNote, r.devPipe ? "AFVIGELSE" : "OK", r.devPipeNote, r.devOther ? "AFVIGELSE" : "", r.devOtherNote, r.photos.length, r.by || "", fmtDate(r.created), fmtDate(r.updated)]);
   }
   rows.push([]); rows.push(["Tagnoter"]);
   for (const [o, t] of Object.entries(TAG)) if (t && t.trim()) rows.push(["", o, "Tag", "", "", "", "", "", "", "", t]);
@@ -867,7 +955,7 @@ async function reportHtml(o, embed) {
     let ph = "";
     if (o.photos === "all" || (o.photos === "dev" && relDev(r))) {
       for (const pid of r.photos) {
-        const p = await dbGet("photos", pid); if (!p) continue;
+        const p = await getPhoto(pid); if (!p) continue;
         let src; if (embed) src = await blobToDataUrl(p.blob); else { src = URL.createObjectURL(p.blob); repUrls.push(src); }
         ph += `<img src="${src}" alt="">`;
       }
@@ -927,7 +1015,8 @@ async function unzip(file) {
 }
 async function makeBackup() {
   toast("Laver backup …", 10000);
-  const regs = await dbGetAll("regs"), photos = await dbGetAll("photos"), meta = await dbGetAll("meta");
+  const PRIVATE = (k) => k === "session" || k === "syncInit" || k === "dirtyMeta" || k === "pendingDel" || k.startsWith("cursor:");
+  const regs = await dbGetAll("regs"), photos = await dbGetAll("photos"), meta = (await dbGetAll("meta")).filter((x) => !PRIVATE(x.key));
   const files = [];
   const pmeta = [];
   for (const p of photos) { files.push({ name: `billeder/${p.id}.jpg`, data: new Uint8Array(await p.blob.arrayBuffer()) }); pmeta.push({ id: p.id, reg: p.reg, created: p.created }); }
@@ -963,7 +1052,9 @@ async function restoreBackup(file) {
     const tag = await metaGet("tag", {});
     for (const [k, v] of Object.entries(m.tag || {})) { if (!v || !v.trim()) continue; if (!tag[k] || !tag[k].trim()) tag[k] = v; else if (!tag[k].includes(v)) tag[k] = tag[k] + "\n--- fra backup ---\n" + v; }
     await metaSet("tag", tag);
+    if (m.materials) { const cur = await metaGet("materials", {}); for (const [k, v] of Object.entries(m.materials)) if (!cur[k] || (v.updated || "") > (cur[k].updated || "")) cur[k] = v; await metaSet("materials", cur); }
     await loadAll();
+    if (syncConfigured() && SESSION) { await markAllDirty(); syncSoon(500); }
     await dialog(`Gendannelse færdig.\n${added} nye registreringer, ${updated} opdateret, ${ph} billeder tilføjet.`, [{ label: "OK", value: 1, cls: "primary" }]);
     render();
   } catch (e) { console.error(e); dialog("Kunne ikke gendanne: " + e.message, [{ label: "OK", value: 1 }]); }
@@ -1001,6 +1092,7 @@ async function initSW() {
 /* ---------------- Start ---------------- */
 (async function start() {
   try { await loadAll(); } catch (e) { $("#main").innerHTML = `<div class="card">Kan ikke åbne den lokale database: ${esc(e.message)}<br>Privat browsing understøttes ikke.</div>`; return; }
+  try { await initSync(); } catch (e) { console.warn(e); }
   render();
   initSW();
   try { if (REGS.size) await navigator.storage?.persist?.(); } catch {}
