@@ -3,7 +3,7 @@
  * key er den offentlige "publishable"/"anon" nøgle – den må gerne stå her.
  * Brug ALDRIG "secret"/"service_role" nøglen her. */
 window.SP2_SYNC = {
-  url: "",
-  key: "",
+  url: "https://zaktjknwboubewatrhlj.supabase.co",
+  key: "sb_publishable_0cosreRI4xExKF1ZPzbhMg_tSB4Uozw",
   email: "team@sp2-daasekontrol.dk"
 };

@@ -53,6 +53,12 @@ create policy sp2_team on public.materials for all to authenticated
   using ((auth.jwt() ->> 'email') = 'team@sp2-daasekontrol.dk')
   with check ((auth.jwt() ->> 'email') = 'team@sp2-daasekontrol.dk');
 
+-- 3b. Rettigheder til Data API (RLS ovenfor afgør, hvad der faktisk kan ses).
+-- anon må kun læse, og ser intet pga. RLS – bruges kun til at holde projektet vågent.
+grant usage on schema public to anon, authenticated;
+grant select, insert, update on public.regs, public.meta, public.materials to authenticated;
+grant select on public.regs to anon;
+
 -- 4. Privat mappe til billeder (højst 5 MB pr. billede, kun JPEG)
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('photos', 'photos', false, 5242880, array['image/jpeg'])
