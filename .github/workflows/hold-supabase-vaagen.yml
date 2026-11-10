@@ -17,7 +17,7 @@ jobs:
           KEY=$(grep -oP 'key:\s*"\K[^"]*' config.js || true)
           if [ -z "$URL" ] || [ -z "$KEY" ]; then echo "Deling er ikke sat op endnu – springer over."; exit 0; fi
           for i in 1 2 3; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "$URL/rest/v1/regs?select=id&limit=1" -H "apikey: $KEY" -H "Authorization: Bearer $KEY")
+            code=$(curl -s -o /dev/null -w "%{http_code}" "$URL/rest/v1/regs?select=id&limit=1" -H "apikey: $KEY")
             echo "Svar: $code"
             [ "$code" -lt 500 ] && [ "$code" != "000" ] && exit 0
             sleep 30
