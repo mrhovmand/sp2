@@ -24,7 +24,7 @@ Hvis du hellere vil bruge **GitHub Desktop**, kan du kopiere indholdet af de fir
 1. Åbn adressen i **Safari**.
 2. Tryk **Del** (firkanten med pil op) og vælg **Føj til hjemmeskærm**. Navnet "SP2 Dåsekontrol" er udfyldt på forhånd.
 3. Åbn appen fra **ikonet på hjemmeskærmen**, og brug den kun derfra. Safari og hjemmeskærmsappen har hver deres lager, så registreringer foretaget i Safari ses ikke i appen.
-4. Gå til **Menu → Hent alle tegninger**. Det er ca. 50 MB, så gør det på wifi. Derefter virker alt uden dækning.
+4. Gå til **Menu → Hent alle tegninger**. Det er ca. 55 MB, så gør det på wifi. Derefter virker alt uden dækning.
 
 ## Daglig brug
 
@@ -64,6 +64,7 @@ Hvis tegningerne bliver revideret: læg de nye PNG-filer i `tegninger/`, og ret 
 
 - 240 boliger fra Artelia N930 (I1, J1, J2, K1, K3) og N931 rev. 1 (F1, F2, F3, F5, F6), 10 oversigtsplaner og signaturforklaringen.
 - Etageplaner (N900–N906) for alle bygninger: F1, F2, F3, F5/F6 (fælles ark), I1, J1, J2, K1 og K3, fra stue til tag. Stueplanerne viser også den udvendige belysning på facaden.
+- Brandplaner (M08) for stueetagen i F1, F2, F3, I1, J1 og K1 samt kældrene under F1–F3 og J1–J2. De vises med 🔥 på etagen.
 - Kældre: under F1/F2/F3 (N911 føringsveje/kraft/svagstrøm og N411 lys, rev. 2) og under J1/J2 (N912 føringsveje/kraft/svagstrøm). Tegningerne ligger i `tegninger/plan/`, og koblingen til bygning og etage står i `SP2_PLANS` i `data.js`.
 - Tegningerne er konverteret til PNG i 250 dpi, så de er skarpe ved zoom.
 - `data.js` kobler bolig, opgang, etage og tegningsside.

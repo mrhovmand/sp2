@@ -338,7 +338,7 @@ async function viewOpgang(m, opgId) {
     const s = statsUnits(us.filter((u) => primaryFloor(u) === f));
     const nb = us.filter((u) => u.real).length;
     h += `<button class="row" data-go="/o/${encodeURIComponent(opgId)}/e/${encodeURIComponent(f)}">
-      <div class="main"><div class="name">${esc(f)}</div><div class="sub">${nb ? `${nb} boliger` : "Ingen boliger på tegningerne"}${plansFor(opgId, f).length ? " · 📐 etageplan" : ""}${s.n ? ` · ${s.n} dåser` : ""}${f === "Tag" && TAG[opgId] ? " · har tagnoter" : ""}</div></div>
+      <div class="main"><div class="name">${esc(f)}</div><div class="sub">${nb ? `${nb} boliger` : "Ingen boliger på tegningerne"}${plansFor(opgId, f).some((p) => p.k !== "brand") ? " · 📐 etageplan" : ""}${plansFor(opgId, f).some((p) => p.k === "brand") ? " · 🔥 brandplan" : ""}${s.n ? ` · ${s.n} dåser` : ""}${f === "Tag" && TAG[opgId] ? " · har tagnoter" : ""}</div></div>
       ${s.dev ? `<span class="badge b-afv">${s.dev} afv.</span>` : ""}<span class="count ${s.n ? "has" : ""}">${s.n}</span><span class="chev">›</span></button>`;
   }
   h += `</div>${tagNoteHtml(opgId)}`;
@@ -363,7 +363,7 @@ async function viewFloor(m, opgId, floor) {
   const us = unitsOn(opgId, floor);
   const pl = plansFor(opgId, floor);
   let h = pl.length
-    ? `<div class="list" style="margin-bottom:14px">${pl.map((p) => drawBtn("btn", `📐 ${esc(p.s)}`, planDraw(p), { opg: opgId, floor })).join("")}</div>`
+    ? `<div class="list" style="margin-bottom:14px">${pl.map((p) => drawBtn("btn", `${p.k === "brand" ? "🔥" : "📐"} ${esc(p.s)}`, planDraw(p), { opg: opgId, floor })).join("")}</div>`
     : `<p class="small muted">Ingen etageplan for denne etage i appen endnu.</p>`;
   h += `<div class="list">`;
   for (const u of us) {
@@ -639,7 +639,7 @@ async function viewMenu(m) {
     <h2>Offline</h2>
     <div class="card"><div>Tegninger på telefonen: <b id="cCount">${cached} / ${total}</b></div>
       <progress id="cProg" max="${total}" value="${cached}"></progress>
-      <div class="btnrow"><button class="btn yellow" id="mHent">Hent alle tegninger (ca. 50 MB)</button></div>
+      <div class="btnrow"><button class="btn yellow" id="mHent">Hent alle tegninger (ca. 55 MB)</button></div>
       <div class="small muted">Gør det på wifi. Appen selv gemmes automatisk. ${esc(est)}${persisted ? " · Lagring er markeret som varig." : ""}</div></div>
     ${syncConfigured() ? `<h2>Deling med holdet</h2>
     <div class="card"><div id="syncLine">${esc(syncStatusText())}</div>
@@ -707,7 +707,7 @@ async function downloadAll() {
   }
   await Promise.all([worker(), worker(), worker(), worker()]);
   downloading = false;
-  if (btn) { btn.disabled = false; btn.textContent = "Hent alle tegninger (ca. 50 MB)"; }
+  if (btn) { btn.disabled = false; btn.textContent = "Hent alle tegninger (ca. 55 MB)"; }
   toast(failed ? `${failed} tegninger kunne ikke hentes – prøv igen med bedre dækning` : "Alle tegninger er gemt på telefonen", 3500);
 }
 
@@ -733,7 +733,7 @@ function relatedDrawings() {
   const floors = V.ctx.floor ? [V.ctx.floor] : u ? u.f : [];
   const out = [];
   if (u?.img) out.push({ src: u.img, title: `${u.o} ${unitName(u)} – side ${u.id}`, label: `Bolig: ${unitName(u)} (side ${u.id})` });
-  for (const f of floors) for (const p of plansFor(opg, f)) out.push({ ...planDraw(p), label: p.s });
+  for (const f of floors) for (const p of plansFor(opg, f)) out.push({ ...planDraw(p), label: (p.k === "brand" ? "🔥 " : "") + p.s });
   const b = OPG.get(opg)?.b || u?.b;
   if (b) out.push({ src: ovImg(b), title: `Oversigtsplan ${b}`, label: `Oversigtsplan bygning ${b}` });
   out.push({ src: SIG_IMG, title: "Signaturforklaring", label: "Signaturforklaring (boliger)" });

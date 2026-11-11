@@ -5,7 +5,7 @@
  * og røres ALDRIG af service workeren. Tegninger ligger i deres egen cache
  * (DRAW_CACHE), som heller ikke slettes ved opdatering.
  */
-const VERSION = "1.4.1";
+const VERSION = "1.5.0";
 const SHELL_CACHE = "sp2-app-" + VERSION;
 const DRAW_CACHE = "sp2-tegninger-v1"; // skift kun navn hvis tegningerne udskiftes
 const SHELL = [
