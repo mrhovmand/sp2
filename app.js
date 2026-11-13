@@ -712,7 +712,8 @@ async function downloadAll() {
 }
 
 /* ---------------- Tegningsviser (pinch-zoom på canvas = altid skarp) ---------------- */
-const V = { img: null, mip: null, s: 1, tx: 0, ty: 0, rot: 0, pts: new Map(), raf: 0, lastTap: 0, ctx: {}, base: null, cur: null };
+const V = { img: null, mip: null, s: 1, tx: 0, ty: 0, rot: 0, pts: new Map(), raf: 0, lastTap: 0, ctx: {}, base: null, cur: null,
+  measure: false, mp: [], drag: null, tap: null, cal: null };
 document.addEventListener("click", (e) => {
   const d = e.target.closest("[data-draw]");
   if (d) { e.preventDefault(); const ds = d.dataset; openDrawing({ src: ds.draw, title: ds.dtitle, full: ds.full }, { unit: ds.unit, opg: ds.opg, floor: ds.floor }); return; }
@@ -741,7 +742,8 @@ function relatedDrawings() {
 }
 async function loadImg(src) {
   if (V.cur === src && V.img) { fitView(); return; }
-  V.cur = src; V.img = null; V.mip = null; V.rot = 0;
+  V.cur = src; V.img = null; V.mip = null; V.rot = 0; V.mp = []; V.drag = null;
+  updateMeasureUI();
   const msg = $("#vmsg"); msg.hidden = false; msg.innerHTML = `<span class="spinner"></span> Åbner tegning …`;
   draw();
   try {
@@ -794,6 +796,81 @@ function paint() {
   else if (V.rot === 3) { x.translate(0, w); x.rotate(-Math.PI / 2); }
   x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
   if (V.mip && V.s * dpr < 0.3) x.drawImage(V.mip, 0, 0, w, h); else x.drawImage(V.img, 0, 0);
+  if (V.measure && V.mp.length) paintMeasure(x, dpr);
+}
+
+/* ---------------- Måleværktøj ---------------- */
+// Billedkoordinater (pixels i tegningen) <-> skærmkoordinater, med samme rotation som paint()
+function imgToScreen(u, v) {
+  const w = V.img.naturalWidth, h = V.img.naturalHeight;
+  const [x, y] = V.rot === 1 ? [h - v, u] : V.rot === 2 ? [w - u, h - v] : V.rot === 3 ? [v, w - u] : [u, v];
+  return { x: x * V.s + V.tx, y: y * V.s + V.ty };
+}
+function screenToImg(X, Y) {
+  const w = V.img.naturalWidth, h = V.img.naturalHeight, x = (X - V.tx) / V.s, y = (Y - V.ty) / V.s;
+  return V.rot === 1 ? { u: y, v: h - x } : V.rot === 2 ? { u: w - x, v: h - y } : V.rot === 3 ? { u: w - y, v: x } : { u: x, v: y };
+}
+const scaleOf = (src) => (window.SP2_SCALE || {})[src] || 0; // mm pr. pixel
+function calOf(src) { return (V.cal && V.cal[src]) || 1; }
+function measuredMeters() {
+  if (V.mp.length < 2) return null;
+  const [a, b] = V.mp, px = Math.hypot(a.u - b.u, a.v - b.v);
+  return px * scaleOf(V.cur) * calOf(V.cur) / 1000;
+}
+const fmtM = (m) => m.toFixed(2).replace(".", ",") + " m";
+function paintMeasure(x, dpr) {
+  x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const P = V.mp.map((p) => imgToScreen(p.u, p.v));
+  if (P.length === 2) {
+    x.lineCap = "round";
+    x.strokeStyle = "#fff"; x.lineWidth = 7; x.beginPath(); x.moveTo(P[0].x, P[0].y); x.lineTo(P[1].x, P[1].y); x.stroke();
+    x.strokeStyle = "#e0007a"; x.lineWidth = 3.5; x.beginPath(); x.moveTo(P[0].x, P[0].y); x.lineTo(P[1].x, P[1].y); x.stroke();
+  }
+  for (const q of P) {
+    x.fillStyle = "rgba(224,0,122,.18)"; x.beginPath(); x.arc(q.x, q.y, 22, 0, 7); x.fill();
+    x.strokeStyle = "#e0007a"; x.lineWidth = 2.5; x.beginPath(); x.arc(q.x, q.y, 22, 0, 7); x.stroke();
+    x.beginPath(); x.moveTo(q.x - 9, q.y); x.lineTo(q.x + 9, q.y); x.moveTo(q.x, q.y - 9); x.lineTo(q.x, q.y + 9); x.stroke();
+  }
+  const m = measuredMeters();
+  if (m !== null) {
+    const t = fmtM(m), mx = (P[0].x + P[1].x) / 2, my = (P[0].y + P[1].y) / 2 - 30;
+    x.font = "bold 20px -apple-system, Arial, sans-serif";
+    const tw = x.measureText(t).width;
+    x.fillStyle = "rgba(0,0,0,.82)"; x.fillRect(mx - tw / 2 - 10, my - 18, tw + 20, 34);
+    x.fillStyle = "#fff"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(t, mx, my);
+    x.textAlign = "start"; x.textBaseline = "alphabetic";
+  }
+}
+function updateMeasureUI() {
+  const btn = $("#vMeasureBtn"), bar = $("#vmeasure");
+  const has = !!scaleOf(V.cur);
+  if (btn) { btn.hidden = !has; btn.classList.toggle("on", V.measure && has); }
+  if (!has) V.measure = false;
+  if (!bar) return;
+  bar.hidden = !V.measure;
+  if (!V.measure) return;
+  const m = measuredMeters();
+  $("#vmText").innerHTML = m !== null
+    ? `<b>${fmtM(m)}</b>${calOf(V.cur) !== 1 ? ' <span class="small">(kalibreret)</span>' : ""}`
+    : V.mp.length === 1 ? "Tryk på punkt 2" : "Tryk på første punkt";
+  $("#vmCal").disabled = m === null && calOf(V.cur) === 1;
+}
+async function calibrate() {
+  const m = measuredMeters();
+  if (!V.cal) V.cal = await metaGet("cal", {});
+  if (m === null) {
+    if (calOf(V.cur) !== 1 && confirm("Nulstil kalibreringen for denne tegning?")) { delete V.cal[V.cur]; await metaSet("cal", V.cal); updateMeasureUI(); draw(); }
+    return;
+  }
+  const raw = m / calOf(V.cur);
+  const v = prompt(`Mål et kendt mål på tegningen (fx et påskrevet mål) og skriv den rigtige længde i meter.\n\nAppen måler nu ${fmtM(m)}. Rigtig længde:`, m.toFixed(2).replace(".", ","));
+  if (v === null) return;
+  const real = parseFloat(String(v).replace(",", "."));
+  if (!(real > 0)) return toast("Skriv en længde i meter, fx 3,60");
+  V.cal[V.cur] = real / raw;
+  await metaSet("cal", V.cal);
+  toast(`Kalibreret – målene på denne tegning rettes med ${((real / raw - 1) * 100).toFixed(1).replace(".", ",")} %`);
+  updateMeasureUI(); draw();
 }
 function clampScale(s) { const f = fitScale(); return Math.max(f * 0.8, Math.min(s, 3)); }
 function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px - (px - V.tx) * k; V.ty = py - (py - V.ty) * k; V.s = ns; draw(); }
@@ -804,6 +881,16 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
   const state = () => { const p = [...V.pts.values()]; if (p.length >= 2) return { cx: (p[0].x + p[1].x) / 2, cy: (p[0].y + p[1].y) / 2, d: Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y) }; if (p.length === 1) return { cx: p[0].x, cy: p[0].y, d: 0 }; return null; };
   c.addEventListener("pointerdown", (e) => {
     c.setPointerCapture(e.pointerId); V.pts.set(e.pointerId, pos(e)); prev = state();
+    if (V.measure && V.img) {
+      const p = pos(e);
+      if (V.pts.size === 1) {
+        V.tap = { x: p.x, y: p.y, t: Date.now(), moved: false };
+        // Tryk tæt på et eksisterende punkt = træk i punktet
+        const i = V.mp.findIndex((q) => { const s = imgToScreen(q.u, q.v); return Math.hypot(s.x - p.x, s.y - p.y) < 30; });
+        V.drag = i >= 0 ? i : null;
+      } else { V.tap = null; V.drag = null; }
+      return;
+    }
     if (V.pts.size === 1) {
       const t = Date.now(), p = pos(e);
       if (t - V.lastTap < 300 && V.img) { const s0 = V.s; fitView(); if (s0 <= V.s * 1.2) zoomAt(p.x, p.y, V.s * 2.5); V.lastTap = 0; }
@@ -812,12 +899,27 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
   });
   c.addEventListener("pointermove", (e) => {
     if (!V.pts.has(e.pointerId) || !V.img) return;
-    V.pts.set(e.pointerId, pos(e)); const s = state(); if (!s || !prev) { prev = s; return; }
+    V.pts.set(e.pointerId, pos(e));
+    if (V.measure && V.drag !== null && V.pts.size === 1) { const p = pos(e); V.mp[V.drag] = screenToImg(p.x, p.y); updateMeasureUI(); draw(); return; }
+    if (V.tap) { const p = pos(e); if (Math.hypot(p.x - V.tap.x, p.y - V.tap.y) > 8) V.tap.moved = true; }
+    const s = state(); if (!s || !prev) { prev = s; return; }
     if (s.d && prev.d) { const ns = clampScale(V.s * (s.d / prev.d)); const k = ns / V.s; V.tx = s.cx - (prev.cx - V.tx) * k; V.ty = s.cy - (prev.cy - V.ty) * k; V.s = ns; }
     else { V.tx += s.cx - prev.cx; V.ty += s.cy - prev.cy; }
     prev = s; draw();
   });
-  const up = (e) => { V.pts.delete(e.pointerId); prev = state(); };
+  const up = (e) => {
+    const wasSingle = V.pts.size === 1;
+    V.pts.delete(e.pointerId); prev = state();
+    if (V.measure && V.img && wasSingle && e.type === "pointerup") {
+      if (V.drag !== null) { V.drag = null; return; }
+      if (V.tap && !V.tap.moved && Date.now() - V.tap.t < 600) {
+        const pt = screenToImg(V.tap.x, V.tap.y);
+        V.mp = V.mp.length >= 2 ? [pt] : [...V.mp, pt];
+        updateMeasureUI(); draw();
+      }
+      V.tap = null;
+    }
+  };
   c.addEventListener("pointerup", up); c.addEventListener("pointercancel", up);
   c.addEventListener("wheel", (e) => { e.preventDefault(); if (!V.img) return; const p = pos(e); zoomAt(p.x, p.y, V.s * Math.exp(-e.deltaY * 0.0015)); }, { passive: false });
   ["gesturestart", "gesturechange"].forEach((n) => c.addEventListener(n, (e) => e.preventDefault()));
@@ -832,6 +934,14 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
       if (V.base?.full) loadImg(V.whole ? V.base.full : V.base.src); else fitView();
     }
     if (a === "rot" && V.img) { V.rot = (V.rot + 1) % 4; fitView(); }
+    if (a === "measure") {
+      V.measure = !V.measure; V.mp = [];
+      if (V.measure && !V.cal) metaGet("cal", {}).then((c) => { V.cal = c; updateMeasureUI(); });
+      updateMeasureUI(); draw();
+      if (V.measure) toast("Tryk på to punkter. Træk i et punkt for at flytte det.", 3000);
+    }
+    if (a === "mclear") { V.mp = []; updateMeasureUI(); draw(); }
+    if (a === "mcal") calibrate();
     if (a === "list") {
       const list = relatedDrawings();
       dialog("Vælg tegning", [...list.map((d, i) => ({ label: (d.src === V.base?.src ? "● " : "") + d.label, value: i, cls: d.src === V.base?.src ? "primary" : "" })), { label: "Annullér", value: null }])
