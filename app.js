@@ -713,8 +713,9 @@ async function downloadAll() {
 
 /* ---------------- Tegningsviser (pinch-zoom på canvas = altid skarp) ---------------- */
 const V = { img: null, mip: null, s: 1, tx: 0, ty: 0, rot: 0, pts: new Map(), raf: 0, lastTap: 0, ctx: {}, base: null, cur: null,
-  measure: false, mp: [], drag: null, aim: null, aimOff: null, multi: false, cal: null };
-const AIM_OFF = 80; // sigtekorset sidder så mange pixels over fingeren
+  measure: false, mp: [], drag: null, aim: null, aimOff: null, aimPt: null, cross: null, snapT: null, multi: false, cal: null };
+const AIM_OFF = 90; // sigtekorset sidder så mange pixels over fingeren
+const LOUPE_R = 52, LOUPE_Z = 3;
 document.addEventListener("click", (e) => {
   const d = e.target.closest("[data-draw]");
   if (d) { e.preventDefault(); const ds = d.dataset; openDrawing({ src: ds.draw, title: ds.dtitle, full: ds.full }, { unit: ds.unit, opg: ds.opg, floor: ds.floor }); return; }
@@ -743,7 +744,7 @@ function relatedDrawings() {
 }
 async function loadImg(src) {
   if (V.cur === src && V.img) { fitView(); return; }
-  V.cur = src; V.img = null; V.mip = null; V.rot = 0; V.mp = []; V.drag = null;
+  V.cur = src; V.img = null; V.mip = null; V.rot = 0; V.mp = []; V.drag = null; V.cross = null; V.aim = null;
   updateMeasureUI();
   const msg = $("#vmsg"); msg.hidden = false; msg.innerHTML = `<span class="spinner"></span> Åbner tegning …`;
   draw();
@@ -797,35 +798,82 @@ function paint() {
   else if (V.rot === 3) { x.translate(0, w); x.rotate(-Math.PI / 2); }
   x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high";
   if (V.mip && V.s * dpr < 0.3) x.drawImage(V.mip, 0, 0, w, h); else x.drawImage(V.img, 0, 0);
-  if (V.measure && V.mp.length) paintMeasure(x, dpr);
-  if (V.measure && V.aim) paintAim(x, dpr);
+  if (V.measure) {
+    if (!V.cross) { const { W, H } = vSize(); V.cross = screenToImg(W / 2, H / 2); }
+    paintMeasure(x, dpr);
+    paintCross(x, dpr);
+  }
 }
-// Sigtekors + forstørrelsesglas (3x) over fingeren
-function paintAim(x, dpr) {
-  const a = V.aim, R = 58, Z = 3;
-  const { W } = vSize();
-  let lx = a.x, ly = a.y - 110;
-  if (ly < R + 6) ly = a.y + AIM_OFF + 120;          // for tæt på toppen: læg luppen under fingeren
-  lx = Math.max(R + 6, Math.min(W - R - 6, lx));
-  // Luppen: samme tegning, Z gange større, centreret om sigtepunktet
-  const w = V.img.naturalWidth, h = V.img.naturalHeight;
-  const cx = (a.x - V.tx) / V.s, cy = (a.y - V.ty) / V.s, S2 = V.s * Z;
+// Sigtekorset står altid på tegningen. Mens fingeren er nede, bliver det til et forstørrelsesglas (3x) omkring sigtepunktet.
+function paintCross(x, dpr) {
+  const aiming = !!V.aim, pt = aiming ? V.aimPt : V.cross;
+  if (!pt) return;
+  const a = imgToScreen(pt.u, pt.v), R = LOUPE_R, Z = LOUPE_Z, col = V.snapT !== null && aiming ? "#00a35c" : "#e0007a";
+  const cross = (px, py, r, g) => { x.beginPath(); x.moveTo(px - r, py); x.lineTo(px - g, py); x.moveTo(px + g, py); x.lineTo(px + r, py); x.moveTo(px, py - r); x.lineTo(px, py - g); x.moveTo(px, py + g); x.lineTo(px, py + r); x.stroke(); };
   x.save();
-  x.setTransform(dpr, 0, 0, dpr, 0, 0);
-  x.beginPath(); x.arc(lx, ly, R, 0, 7); x.closePath(); x.fillStyle = "#fff"; x.fill(); x.clip();
-  x.setTransform(dpr * S2, 0, 0, dpr * S2, dpr * (lx - cx * S2), dpr * (ly - cy * S2));
-  if (V.rot === 1) { x.translate(h, 0); x.rotate(Math.PI / 2); }
-  else if (V.rot === 2) { x.translate(w, h); x.rotate(Math.PI); }
-  else if (V.rot === 3) { x.translate(0, w); x.rotate(-Math.PI / 2); }
-  x.imageSmoothingEnabled = true; x.drawImage(V.img, 0, 0);
+  if (aiming) {
+    const w = V.img.naturalWidth, h = V.img.naturalHeight;
+    const cx = (a.x - V.tx) / V.s, cy = (a.y - V.ty) / V.s, S2 = V.s * Z;
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.beginPath(); x.arc(a.x, a.y, R, 0, 7); x.closePath(); x.fillStyle = "#fff"; x.fill(); x.clip();
+    x.setTransform(dpr * S2, 0, 0, dpr * S2, dpr * (a.x - cx * S2), dpr * (a.y - cy * S2));
+    if (V.rot === 1) { x.translate(h, 0); x.rotate(Math.PI / 2); }
+    else if (V.rot === 2) { x.translate(w, h); x.rotate(Math.PI); }
+    else if (V.rot === 3) { x.translate(0, w); x.rotate(-Math.PI / 2); }
+    x.imageSmoothingEnabled = true; x.drawImage(V.img, 0, 0);
+    x.restore(); x.save();
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.lineWidth = 3; x.strokeStyle = col; x.beginPath(); x.arc(a.x, a.y, R, 0, 7); x.stroke();
+    x.lineWidth = 3; x.strokeStyle = "rgba(255,255,255,.9)"; cross(a.x, a.y, R - 6, 5);
+    x.lineWidth = 1.5; x.strokeStyle = col; cross(a.x, a.y, R - 6, 5);
+  } else {
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    x.lineWidth = 4; x.strokeStyle = "rgba(255,255,255,.9)"; cross(a.x, a.y, 18, 4);
+    x.lineWidth = 2; x.strokeStyle = col; cross(a.x, a.y, 18, 4);
+  }
+  x.beginPath(); x.arc(a.x, a.y, 2.5, 0, 7); x.fillStyle = col; x.fill();
   x.restore();
-  x.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const cross = (px, py, r) => { x.beginPath(); x.moveTo(px - r, py); x.lineTo(px - 4, py); x.moveTo(px + 4, py); x.lineTo(px + r, py); x.moveTo(px, py - r); x.lineTo(px, py - 4); x.moveTo(px, py + 4); x.lineTo(px, py + r); x.stroke(); };
-  x.lineWidth = 3; x.strokeStyle = "#fff"; cross(lx, ly, 18); x.lineWidth = 1.5; x.strokeStyle = "#e0007a"; cross(lx, ly, 18);
-  x.lineWidth = 3; x.strokeStyle = "#e0007a"; x.beginPath(); x.arc(lx, ly, R, 0, 7); x.stroke();
-  // Sigtekorset på selve tegningen
-  x.lineWidth = 4; x.strokeStyle = "rgba(255,255,255,.9)"; cross(a.x, a.y, 16); x.lineWidth = 2; x.strokeStyle = "#e0007a"; cross(a.x, a.y, 16);
-  x.beginPath(); x.arc(a.x, a.y, 3, 0, 7); x.fillStyle = "#e0007a"; x.fill();
+}
+// Let vibration (Android: vibrate, iPhone: kontakt-trick der giver et lille "tik" på nyere iOS)
+let hapticEl = null;
+function haptic() {
+  try { if (navigator.vibrate && navigator.vibrate(15)) return; } catch {}
+  try {
+    if (!hapticEl) { hapticEl = document.createElement("label"); hapticEl.setAttribute("aria-hidden", "true");
+      hapticEl.style.cssText = "position:fixed;left:-200px;top:0;width:1px;height:1px;overflow:hidden;opacity:0;pointer-events:none";
+      hapticEl.innerHTML = '<input type="checkbox" switch tabindex="-1">'; document.body.appendChild(hapticEl); }
+    hapticEl.click();
+  } catch {}
+}
+// Vinkel (0–180°) på skærmen mellem to skærmpunkter: vandret = 0°, lodret = 90°
+const angOf = (A, B) => { let d = Math.atan2(-(B.y - A.y), B.x - A.x) * 180 / Math.PI; d = ((d % 180) + 180) % 180; return d; };
+const angDiff = (a, t) => ((((a - t) % 180) + 270) % 180) - 90;
+// Punktet der måles fra, mens man sigter (det andet punkt), eller null
+function aimAnchor() {
+  if (V.drag !== null) return V.mp.length === 2 ? V.mp[1 - V.drag] : null;
+  return V.mp.length === 1 ? V.mp[0] : null;
+}
+// Beregn sigtepunkt ud fra fingeren – med let lås ved hver 45°
+function updateAim(f) {
+  V.aim = { x: f.x + V.aimOff.dx, y: f.y + V.aimOff.dy };
+  const an = aimAnchor();
+  let P = V.aim, snap = null;
+  if (an) {
+    const A = imgToScreen(an.u, an.v), dx = P.x - A.x, dy = P.y - A.y;
+    if (Math.hypot(dx, dy) > 30) {
+      const ang = angOf(A, P), t = Math.round(ang / 45) * 45 % 180;
+      if (V.snapT !== null && Math.abs(angDiff(ang, V.snapT)) < 4.5) snap = V.snapT;
+      else if (Math.abs(angDiff(ang, t)) < 2.5) snap = t;
+      if (snap !== null) {
+        const r = snap * Math.PI / 180, ux = Math.cos(r), uy = -Math.sin(r), L = dx * ux + dy * uy;
+        P = { x: A.x + ux * L, y: A.y + uy * L };
+      }
+    }
+  }
+  if (snap !== null && snap !== V.snapT) haptic();
+  V.snapT = snap;
+  V.aimPt = screenToImg(P.x, P.y);
+  if (V.drag !== null) { V.mp[V.drag] = V.aimPt; }
 }
 
 /* ---------------- Måleværktøj ---------------- */
@@ -841,31 +889,47 @@ function screenToImg(X, Y) {
 }
 const scaleOf = (src) => (window.SP2_SCALE || {})[src] || 0; // mm pr. pixel
 function calOf(src) { return (V.cal && V.cal[src]) || 1; }
-function measuredMeters() {
-  if (V.mp.length < 2) return null;
-  const [a, b] = V.mp, px = Math.hypot(a.u - b.u, a.v - b.v);
+// Punkterne der vises: de satte punkter + det punkt man er ved at sigte på
+function shownPts() {
+  if (V.aim && V.aimPt && V.drag === null) return V.mp.length === 1 ? [V.mp[0], V.aimPt] : [];
+  return V.mp;
+}
+function measuredMeters(pts = shownPts()) {
+  if (pts.length < 2) return null;
+  const [a, b] = pts, px = Math.hypot(a.u - b.u, a.v - b.v);
   return px * scaleOf(V.cur) * calOf(V.cur) / 1000;
 }
+function measuredAngle(pts = shownPts()) {
+  if (pts.length < 2) return null;
+  return angOf(imgToScreen(pts[0].u, pts[0].v), imgToScreen(pts[1].u, pts[1].v));
+}
+const fmtA = (a) => { const r = Math.round(a * 10) / 10; return (r % 1 ? r.toFixed(1).replace(".", ",") : String(r % 180)) + "°"; };
 const fmtM = (m) => m.toFixed(2).replace(".", ",") + " m";
 function paintMeasure(x, dpr) {
   x.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const P = V.mp.map((p) => imgToScreen(p.u, p.v));
+  const pts = shownPts(), P = pts.map((p) => imgToScreen(p.u, p.v)), locked = V.aim && V.snapT !== null;
   if (P.length === 2) {
     x.lineCap = "round";
     x.strokeStyle = "#fff"; x.lineWidth = 7; x.beginPath(); x.moveTo(P[0].x, P[0].y); x.lineTo(P[1].x, P[1].y); x.stroke();
     x.strokeStyle = "#e0007a"; x.lineWidth = 3.5; x.beginPath(); x.moveTo(P[0].x, P[0].y); x.lineTo(P[1].x, P[1].y); x.stroke();
   }
-  for (const q of P) {
+  for (const q of V.mp.map((p) => imgToScreen(p.u, p.v))) {
     x.fillStyle = "rgba(224,0,122,.18)"; x.beginPath(); x.arc(q.x, q.y, 22, 0, 7); x.fill();
     x.strokeStyle = "#e0007a"; x.lineWidth = 2.5; x.beginPath(); x.arc(q.x, q.y, 22, 0, 7); x.stroke();
     x.beginPath(); x.moveTo(q.x - 9, q.y); x.lineTo(q.x + 9, q.y); x.moveTo(q.x, q.y - 9); x.lineTo(q.x, q.y + 9); x.stroke();
   }
-  const m = measuredMeters();
+  const m = measuredMeters(pts);
   if (m !== null) {
-    const t = fmtM(m), mx = (P[0].x + P[1].x) / 2, my = (P[0].y + P[1].y) / 2 - 30;
+    const t = fmtM(m) + "  " + (locked ? "🔒 " : "") + fmtA(locked ? V.snapT : measuredAngle(pts));
     x.font = "bold 20px -apple-system, Arial, sans-serif";
-    const tw = x.measureText(t).width;
-    x.fillStyle = "rgba(0,0,0,.82)"; x.fillRect(mx - tw / 2 - 10, my - 18, tw + 20, 34);
+    const tw = x.measureText(t).width, { W } = vSize();
+    let mx = (P[0].x + P[1].x) / 2, my = (P[0].y + P[1].y) / 2 - 30;
+    if (V.aim && V.aimPt) { // mens man sigter: over forstørrelsesglasset
+      const A = imgToScreen(V.aimPt.u, V.aimPt.v); mx = A.x; my = A.y - LOUPE_R - 26;
+      if (my < 24) my = A.y + LOUPE_R + 26;
+    }
+    mx = Math.max(tw / 2 + 12, Math.min(W - tw / 2 - 12, mx));
+    x.fillStyle = locked ? "rgba(0,120,68,.92)" : "rgba(0,0,0,.82)"; x.fillRect(mx - tw / 2 - 10, my - 18, tw + 20, 34);
     x.fillStyle = "#fff"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(t, mx, my);
     x.textAlign = "start"; x.textBaseline = "alphabetic";
   }
@@ -878,14 +942,14 @@ function updateMeasureUI() {
   if (!bar) return;
   bar.hidden = !V.measure;
   if (!V.measure) return;
-  const m = measuredMeters();
+  const m = measuredMeters(V.mp), an = measuredAngle(V.mp);
   $("#vmText").innerHTML = m !== null
-    ? `<b>${fmtM(m)}</b>${calOf(V.cur) !== 1 ? ' <span class="small">(kalibreret)</span>' : ""}`
+    ? `<b>${fmtM(m)}</b> · ${fmtA(an)}${calOf(V.cur) !== 1 ? ' <span class="small">(kalibreret)</span>' : ""}`
     : V.mp.length === 1 ? "Sæt fingeren under punkt 2" : "Sæt fingeren under første punkt";
   $("#vmCal").disabled = m === null && calOf(V.cur) === 1;
 }
 async function calibrate() {
-  const m = measuredMeters();
+  const m = measuredMeters(V.mp);
   if (!V.cal) V.cal = await metaGet("cal", {});
   if (m === null) {
     if (calOf(V.cur) !== 1 && confirm("Nulstil kalibreringen for denne tegning?")) { delete V.cal[V.cur]; await metaSet("cal", V.cal); updateMeasureUI(); draw(); }
@@ -916,11 +980,12 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
         // Én finger = sigte. Sigtekorset sidder over fingeren, så man kan se, hvor punktet lander.
         // Starter man tæt på et eksisterende punkt (eller dets sigte), flyttes det punkt med samme afstand til fingeren.
         const near = (q) => { const sp = imgToScreen(q.u, q.v); return Math.min(Math.hypot(sp.x - f.x, sp.y - f.y), Math.hypot(sp.x - f.x, sp.y - (f.y - AIM_OFF))); };
-        let best = -1, bd = 34;
+        let best = -1, bd = 36;
         V.mp.forEach((q, i) => { const d = near(q); if (d < bd) { bd = d; best = i; } });
+        V.snapT = null;
         if (best >= 0) { const sp = imgToScreen(V.mp[best].u, V.mp[best].v); V.drag = best; V.aimOff = { dx: sp.x - f.x, dy: sp.y - f.y }; }
         else { V.drag = null; V.aimOff = { dx: 0, dy: -AIM_OFF }; }
-        V.aim = { x: f.x + V.aimOff.dx, y: f.y + V.aimOff.dy };
+        updateAim(f);
         draw();
       } else { V.multi = true; V.aim = null; V.drag = null; draw(); }
       return;
@@ -935,8 +1000,8 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
     if (!V.pts.has(e.pointerId) || !V.img) return;
     V.pts.set(e.pointerId, pos(e));
     if (V.measure && V.aim && V.pts.size === 1) {
-      const f = pos(e); V.aim = { x: f.x + V.aimOff.dx, y: f.y + V.aimOff.dy };
-      if (V.drag !== null) { V.mp[V.drag] = screenToImg(V.aim.x, V.aim.y); updateMeasureUI(); }
+      updateAim(pos(e));
+      if (V.drag !== null) updateMeasureUI();
       draw(); return;
     }
     const s = state(); if (!s || !prev) { prev = s; return; }
@@ -948,13 +1013,13 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
     const wasSingle = V.pts.size === 1;
     V.pts.delete(e.pointerId); prev = state();
     if (V.measure && V.img) {
-      if (wasSingle && V.aim && e.type === "pointerup" && V.drag === null) {
-        const pt = screenToImg(V.aim.x, V.aim.y);
-        V.mp = V.mp.length >= 2 ? [pt] : [...V.mp, pt];
+      if (wasSingle && V.aim && V.aimPt) {
+        if (e.type === "pointerup" && V.drag === null) { const pt = V.aimPt; V.mp = V.mp.length >= 2 ? [pt] : [...V.mp, pt]; }
+        if (e.type === "pointerup" || V.drag === null) V.cross = V.aimPt;
         updateMeasureUI();
       }
       if (V.pts.size === 0) V.multi = false;
-      V.aim = null; V.drag = null; draw();
+      V.aim = null; V.aimPt = null; V.drag = null; V.snapT = null; draw();
     }
   };
   c.addEventListener("pointerup", up); c.addEventListener("pointercancel", up);
@@ -972,10 +1037,10 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
     }
     if (a === "rot" && V.img) { V.rot = (V.rot + 1) % 4; fitView(); }
     if (a === "measure") {
-      V.measure = !V.measure; V.mp = [];
+      V.measure = !V.measure; V.mp = []; V.cross = null;
       if (V.measure && !V.cal) metaGet("cal", {}).then((c) => { V.cal = c; updateMeasureUI(); });
       updateMeasureUI(); draw();
-      if (V.measure) toast("Sæt fingeren lige under det sted, du vil måle fra – sigtet sidder over fingeren. Slip for at sætte punktet. Brug to fingre til at flytte og zoome.", 4500);
+      if (V.measure) toast("Sæt fingeren lige under det sted, du vil måle fra – sigtekorset forstørrer, så længe fingeren er nede. Slip for at sætte punktet. Målingen låser let ved 0°, 45° og 90°. To fingre flytter og zoomer.", 4500);
     }
     if (a === "mclear") { V.mp = []; updateMeasureUI(); draw(); }
     if (a === "mcal") calibrate();
