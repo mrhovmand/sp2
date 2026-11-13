@@ -36,7 +36,7 @@ Hvis du hellere vil bruge **GitHub Desktop**, kan du kopiere indholdet af de fir
 - Boligernes navne (tv./th. osv.) er **foreslåede**, fordi tegningerne ikke viser siden. Ret dem på stedet med **Ret navn**, eller tryk **Navnet er rigtigt**.
 - Noter om tag findes på hver opgang og under etagen "Tag".
 - Hver etage har også "Trappe / fællesareal", og kælder har "Kælder / fællesareal".
-- **📏 Mål** i tegningsviseren: tryk på to punkter, så vises afstanden i meter. Træk i et punkt for at flytte det, og zoom ind for at ramme præcist. Målestokken er indbygget pr. tegning (1:50, 1:100, 1:200, 1:500). **Kalibrér** kan rette efter et påskrevet mål, og det huskes pr. tegning på telefonen.
+- **📏 Mål** i tegningsviseren: sæt fingeren lige under det sted, du vil måle fra – sigtekorset og et forstørrelsesglas sidder over fingeren – og slip. Gør det samme for punkt 2. Flyt og zoom med to fingre, og flyt et punkt ved at tage fat lige under det. Målestokken er indbygget pr. tegning (1:50, 1:100, 1:200, 1:500). **Kalibrér** kan rette efter et påskrevet mål, og det huskes pr. tegning på telefonen.
 - Etager med en etage- eller kældertegning viser 📐-knapper øverst. I tegningsviseren skifter **Tegninger ▾** mellem boligtegning, etageplan, kælder, oversigtsplan og signaturforklaring. **Hele ark** viser hele arket med signaturer og titelfelt.
 
 ## Deling med holdet og materialeliste
