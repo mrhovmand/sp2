@@ -886,7 +886,7 @@ async function downloadAll() {
 
 /* ---------------- Tegningsviser (pinch-zoom på canvas = altid skarp) ---------------- */
 const V = { img: null, mip: null, s: 1, tx: 0, ty: 0, rot: 0, pts: new Map(), raf: 0, lastTap: 0, ctx: {}, base: null, cur: null,
-  measure: false, mp: [], drag: null, aim: null, aimOff: null, aimPt: null, cross: null, snapT: null, route: false, multi: false, cal: null };
+  measure: false, mp: [], drag: null, aim: null, aimOff: null, aimPt: null, cross: null, snapT: null, route: false, lineSnap: true, lineHit: null, lineDir: null, multi: false, cal: null };
 const AIM_OFF = 90; // sigtekorset sidder så mange pixels over fingeren
 const LOUPE_R = 52, LOUPE_Z = 3;
 document.addEventListener("click", (e) => {
@@ -981,7 +981,7 @@ function paint() {
 function paintCross(x, dpr) {
   const aiming = !!V.aim, pt = aiming ? V.aimPt : V.cross;
   if (!pt) return;
-  const a = imgToScreen(pt.u, pt.v), R = LOUPE_R, Z = LOUPE_Z, col = V.snapT !== null && aiming ? "#00a35c" : "#e0007a";
+  const a = imgToScreen(pt.u, pt.v), R = LOUPE_R, Z = LOUPE_Z, col = aiming && V.snapT !== null ? "#00a35c" : aiming && V.lineHit ? "#0a6cff" : "#e0007a";
   const cross = (px, py, r, g) => { x.beginPath(); x.moveTo(px - r, py); x.lineTo(px - g, py); x.moveTo(px + g, py); x.lineTo(px + r, py); x.moveTo(px, py - r); x.lineTo(px, py - g); x.moveTo(px, py + g); x.lineTo(px, py + r); x.stroke(); };
   x.save();
   if (aiming) {
@@ -997,6 +997,7 @@ function paintCross(x, dpr) {
     x.restore(); x.save();
     x.setTransform(dpr, 0, 0, dpr, 0, 0);
     x.lineWidth = 3; x.strokeStyle = col; x.beginPath(); x.arc(a.x, a.y, R, 0, 7); x.stroke();
+    if (V.lineHit === "point") { x.lineWidth = 2.5; x.strokeStyle = "#0a6cff"; x.strokeRect(a.x - 9, a.y - 9, 18, 18); }
     x.lineWidth = 3; x.strokeStyle = "rgba(255,255,255,.9)"; cross(a.x, a.y, R - 6, 5);
     x.lineWidth = 1.5; x.strokeStyle = col; cross(a.x, a.y, R - 6, 5);
   } else {
@@ -1005,6 +1006,11 @@ function paintCross(x, dpr) {
     x.lineWidth = 2; x.strokeStyle = col; cross(a.x, a.y, 18, 4);
   }
   x.beginPath(); x.arc(a.x, a.y, 2.5, 0, 7); x.fillStyle = col; x.fill();
+  if (aiming && V.lineDir) { // stregen der er fanget
+    x.save(); x.beginPath(); x.arc(a.x, a.y, R - 1, 0, 7); x.clip();
+    x.globalAlpha = .55; x.lineWidth = 5; x.strokeStyle = "#0a6cff"; x.beginPath();
+    x.moveTo(a.x - V.lineDir.x * R, a.y - V.lineDir.y * R); x.lineTo(a.x + V.lineDir.x * R, a.y + V.lineDir.y * R); x.stroke(); x.restore();
+  }
   x.restore();
 }
 // Let vibration (Android: vibrate, iPhone: kontakt-trick der giver et lille "tik" på nyere iOS)
@@ -1028,24 +1034,93 @@ function aimAnchor() {
   return V.mp.length === 1 ? V.mp[0] : null;
 }
 // Beregn sigtepunkt ud fra fingeren – med let lås ved hver 45°
+// Fang streg: find nærmeste streg på tegningen omkring q (billedkoordinater).
+// Returnerer { pt, dir } (dir = stregens retning) eller { pt, dir: null } ved hjørne/kryds, eller null.
+let snapCv = null;
+function findLine(q) {
+  const img = V.img; if (!img) return null;
+  const R = Math.max(4, Math.min(90, 18 / V.s)), PR = 7; // søgeradius og analyse-radius i billedpixels
+  const u0 = Math.max(0, Math.floor(q.u - R - PR)), v0 = Math.max(0, Math.floor(q.v - R - PR));
+  const u1 = Math.min(img.naturalWidth, Math.ceil(q.u + R + PR)), v1 = Math.min(img.naturalHeight, Math.ceil(q.v + R + PR));
+  const w = u1 - u0, h = v1 - v0; if (w < 3 || h < 3) return null;
+  if (!snapCv) snapCv = document.createElement("canvas");
+  if (snapCv.width < w || snapCv.height < h) { snapCv.width = Math.max(w, snapCv.width); snapCv.height = Math.max(h, snapCv.height); }
+  const cx = snapCv.getContext("2d", { willReadFrequently: true });
+  cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, h);
+  cx.drawImage(img, u0, v0, w, h, 0, 0, w, h);
+  const d = cx.getImageData(0, 0, w, h).data;
+  const ink = (x, y) => { const i = (y * w + x) * 4; const m = 255 - Math.min(d[i], d[i + 1], d[i + 2]); return m > 105 ? m : 0; };
+  // nærmeste blæk-pixel
+  let best = null, bd = R * R;
+  const qx = q.u - u0 - 0.5, qy = q.v - v0 - 0.5;
+  for (let y = Math.max(0, Math.floor(qy - R)); y <= Math.min(h - 1, Math.ceil(qy + R)); y++)
+    for (let x = Math.max(0, Math.floor(qx - R)); x <= Math.min(w - 1, Math.ceil(qx + R)); x++) {
+      const dd = (x - qx) ** 2 + (y - qy) ** 2; if (dd < bd && ink(x, y)) { bd = dd; best = [x, y]; }
+    }
+  if (!best) return null;
+  // retning af stregen omkring den (hovedakse af blækket)
+  let W = 0, mx = 0, my = 0;
+  const pts = [];
+  for (let y = Math.max(0, best[1] - PR); y <= Math.min(h - 1, best[1] + PR); y++)
+    for (let x = Math.max(0, best[0] - PR); x <= Math.min(w - 1, best[0] + PR); x++) {
+      if ((x - best[0]) ** 2 + (y - best[1]) ** 2 > PR * PR) continue;
+      const k = ink(x, y); if (!k) continue; pts.push([x, y, k]); W += k; mx += x * k; my += y * k;
+    }
+  if (W < 255 * 3) return null;
+  mx /= W; my /= W;
+  let a = 0, b = 0, c = 0;
+  for (const [x, y, k] of pts) { a += k * (x - mx) ** 2; b += k * (x - mx) * (y - my); c += k * (y - my) ** 2; }
+  a /= W; b /= W; c /= W;
+  const tr = (a + c) / 2, df = Math.sqrt(((a - c) / 2) ** 2 + b * b), l1 = tr + df, l2 = tr - df;
+  const C = { u: mx + u0 + 0.5, v: my + v0 + 0.5 };
+  if (l1 > 4 * l2 + 0.5) {
+    const t = 0.5 * Math.atan2(2 * b, a - c), du = Math.cos(t), dv = Math.sin(t);
+    const L = (q.u - C.u) * du + (q.v - C.v) * dv;
+    return { pt: { u: C.u + du * L, v: C.v + dv * L }, dir: { u: du, v: dv } };
+  }
+  return { pt: C, dir: null }; // hjørne, kryds eller lille symbol
+}
+let lastTick = 0;
+function tick() { const t = Date.now(); if (t - lastTick > 120) { lastTick = t; haptic(); } }
+// Beregn sigtepunkt ud fra fingeren – med fang streg og let lås ved hver 45°
 function updateAim(f) {
   V.aim = { x: f.x + V.aimOff.dx, y: f.y + V.aimOff.dy };
+  const raw = V.aim;
+  let line = null;
+  if (V.lineSnap) { try { line = findLine(screenToImg(raw.x, raw.y)); } catch { line = null; } }
+  // stregen i skærmkoordinater
+  let Ls = null;
+  if (line) {
+    const p = imgToScreen(line.pt.u, line.pt.v);
+    Ls = { p, d: null };
+    if (line.dir) { const p2 = imgToScreen(line.pt.u + line.dir.u * 10, line.pt.v + line.dir.v * 10), n = Math.hypot(p2.x - p.x, p2.y - p.y); Ls.d = { x: (p2.x - p.x) / n, y: (p2.y - p.y) / n }; }
+  }
+  if (Ls && !Ls.d && Math.hypot(Ls.p.x - raw.x, Ls.p.y - raw.y) > 10) Ls = null; // hjørne/kryds kun når sigtet næsten står på det
+  let P = Ls ? Ls.p : raw, snap = null;
   const an = aimAnchor();
-  let P = V.aim, snap = null;
-  if (an) {
-    const A = imgToScreen(an.u, an.v), dx = P.x - A.x, dy = P.y - A.y;
+  if (an && !(Ls && !Ls.d)) { // ved hjørne/kryds vinder punktet
+    const A = imgToScreen(an.u, an.v), dx = raw.x - A.x, dy = raw.y - A.y;
     if (Math.hypot(dx, dy) > 30) {
-      const ang = angOf(A, P), t = Math.round(ang / 45) * 45 % 180;
+      const ang = angOf(A, raw), t = Math.round(ang / 45) * 45 % 180;
       if (V.snapT !== null && Math.abs(angDiff(ang, V.snapT)) < 4.5) snap = V.snapT;
       else if (Math.abs(angDiff(ang, t)) < 2.5) snap = t;
       if (snap !== null) {
-        const r = snap * Math.PI / 180, ux = Math.cos(r), uy = -Math.sin(r), L = dx * ux + dy * uy;
-        P = { x: A.x + ux * L, y: A.y + uy * L };
+        const r = snap * Math.PI / 180, ux = Math.cos(r), uy = -Math.sin(r);
+        let done = false;
+        if (Ls && Ls.d) { // skæring mellem vinkel-linjen og stregen
+          const cr = ux * Ls.d.y - uy * Ls.d.x;
+          if (Math.abs(cr) > 0.25) {
+            const s_ = ((Ls.p.x - A.x) * Ls.d.y - (Ls.p.y - A.y) * Ls.d.x) / cr, X = { x: A.x + ux * s_, y: A.y + uy * s_ };
+            if (Math.hypot(X.x - raw.x, X.y - raw.y) < 40) { P = X; done = true; }
+          }
+        }
+        if (!done) { const L = dx * ux + dy * uy; P = { x: A.x + ux * L, y: A.y + uy * L }; if (Ls && Ls.d && Math.abs(ux * Ls.d.y - uy * Ls.d.x) > 0.25) Ls = null; }
       }
     }
   }
   if (snap !== null && snap !== V.snapT) haptic();
-  V.snapT = snap;
+  else if (Ls && !V.lineHit) tick();
+  V.snapT = snap; V.lineHit = Ls ? (Ls.d ? "line" : "point") : null; V.lineDir = Ls && Ls.d;
   V.aimPt = screenToImg(P.x, P.y);
   if (V.drag !== null) { V.mp[V.drag] = V.aimPt; }
 }
@@ -1139,6 +1214,7 @@ function updateMeasureUI() {
     ? (m !== null ? `Rute: <b>${fmtM(m)}</b> · ${V.mp.length - 1} stk.${kal}` : V.mp.length ? "Sæt fingeren under næste punkt" : "Sæt fingeren under første punkt")
     : m !== null ? `<b>${fmtM(m)}</b> · ${fmtA(an)}${kal}` : V.mp.length === 1 ? "Sæt fingeren under punkt 2" : "Sæt fingeren under første punkt";
   $("#vmP2P").classList.toggle("on", !V.route); $("#vmRoute").classList.toggle("on", V.route);
+  $("#vmSnap").classList.toggle("on", V.lineSnap);
   $("#vmUndo").hidden = !V.route; $("#vmUndo").disabled = !V.mp.length;
   $("#vmCal").disabled = m === null && calOf(V.cur) === 1;
 }
@@ -1215,7 +1291,7 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
         updateMeasureUI();
       }
       if (V.pts.size === 0) V.multi = false;
-      V.aim = null; V.aimPt = null; V.drag = null; V.grab = null; V.snapT = null; draw();
+      V.aim = null; V.aimPt = null; V.drag = null; V.grab = null; V.snapT = null; V.lineHit = null; V.lineDir = null; draw();
     }
   };
   c.addEventListener("pointerup", up); c.addEventListener("pointercancel", up);
@@ -1235,12 +1311,14 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
     if (a === "measure") {
       V.measure = !V.measure; V.mp = []; V.cross = null;
       if (V.measure && !V.cal) metaGet("cal", {}).then((c) => { V.cal = c; updateMeasureUI(); });
+      if (V.measure) metaGet("measureSnap", true).then((v) => { V.lineSnap = v; updateMeasureUI(); });
       if (V.measure) metaGet("measureRoute", false).then((r) => { if (r !== V.route && !V.mp.length) { V.route = r; updateMeasureUI(); draw(); } });
       updateMeasureUI(); draw();
       if (V.measure) toast("Sæt fingeren lige under det sted, du vil måle fra – sigtekorset forstørrer, så længe fingeren er nede. Slip for at sætte punktet. Vælg Rute for at måle gennem flere punkter. To fingre flytter og zoomer.", 4500);
     }
     if (a === "mclear") { V.mp = []; updateMeasureUI(); draw(); }
     if (a === "mp2p" || a === "mroute") { const r = a === "mroute"; if (r !== V.route) { V.route = r; V.mp = []; metaSet("measureRoute", r); } updateMeasureUI(); draw(); }
+    if (a === "msnap") { V.lineSnap = !V.lineSnap; metaSet("measureSnap", V.lineSnap); updateMeasureUI(); toast(V.lineSnap ? "Fang streg er slået til" : "Fang streg er slået fra – frit sigte"); }
     if (a === "mundo") { V.mp.pop(); if (V.mp.length) V.cross = V.mp[V.mp.length - 1]; updateMeasureUI(); draw(); }
     if (a === "mcal") calibrate();
     if (a === "list") {
