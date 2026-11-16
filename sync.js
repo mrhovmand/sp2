@@ -172,7 +172,8 @@ async function syncNow() {
       for (const row of pmat.rows) {
         const loc = cur[row.id];
         const remote = { ...row.data, deleted: row.deleted, dirty: false };
-        const same = loc && loc.updated === remote.updated && !!loc.deleted === !!remote.deleted && !!loc.done === !!remote.done && loc.text === remote.text;
+        const strip = (o) => { const { dirty: _d, ...r } = o; r.deleted = !!r.deleted; return JSON.stringify(Object.keys(r).sort().map((k) => [k, r[k]])); };
+        const same = loc && strip(loc) === strip(remote);
         if (!loc || (!loc.dirty && !same) || (loc.dirty && (remote.updated || "") > (loc.updated || ""))) { cur[row.id] = remote; changed = true; }
       }
       await metaSet("materials", cur);

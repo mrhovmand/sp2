@@ -36,7 +36,7 @@ Hvis du hellere vil bruge **GitHub Desktop**, kan du kopiere indholdet af de fir
 - Boligernes navne (tv./th. osv.) er **foreslåede**, fordi tegningerne ikke viser siden. Ret dem på stedet med **Ret navn**, eller tryk **Navnet er rigtigt**.
 - Noter om tag findes på hver opgang og under etagen "Tag".
 - Hver etage har også "Trappe / fællesareal", og kælder har "Kælder / fællesareal".
-- **📏 Mål** i tegningsviseren: sigtekorset står hele tiden på tegningen. Sæt fingeren lige under det sted, du vil måle fra – så forstørrer sigtekorset 3x, indtil du slipper og punktet sættes. Gør det samme for punkt 2. Afstand og vinkel vises, og målingen låser let (med en lille vibration) ved 0°, 45°, 90° og 135°. Flyt og zoom med to fingre, og flyt et punkt ved at tage fat lige under det. Målestokken er indbygget pr. tegning (1:50, 1:100, 1:200, 1:500). **Kalibrér** kan rette efter et påskrevet mål, og det huskes pr. tegning på telefonen.
+- **📏 Mål** i tegningsviseren: sigtekorset står hele tiden på tegningen. Sæt fingeren lige under det sted, du vil måle fra – så forstørrer sigtekorset 3x, indtil du slipper og punktet sættes. Gør det samme for punkt 2. Afstand og vinkel vises, og målingen låser let (med en lille vibration) ved 0°, 45°, 90° og 135°. Vælg **Punkt til punkt** (ét mål) eller **Rute** (hvert tryk tilføjer et punkt; længden på hvert stykke står ved stregen og den samlede længde øverst, **Fortryd** fjerner sidste punkt). Flyt og zoom med to fingre, og flyt et punkt ved at tage fat lige under det og trække. Målestokken er indbygget pr. tegning (1:50, 1:100, 1:200, 1:500). **Kalibrér** kan rette efter et påskrevet mål, og det huskes pr. tegning på telefonen.
 - Etager med en etage- eller kældertegning viser 📐-knapper øverst. I tegningsviseren skifter **Tegninger ▾** mellem boligtegning, etageplan, kælder, oversigtsplan og signaturforklaring. **Hele ark** viser hele arket med signaturer og titelfelt.
 
 ## Deling med holdet og materialeliste
@@ -44,6 +44,7 @@ Hvis du hellere vil bruge **GitHub Desktop**, kan du kopiere indholdet af de fir
 - Appen kan dele registreringer, billeder, navne, tagnoter og materialelisten mellem flere telefoner via Supabase (gratis). Opsætning: se `supabase/VEJLEDNING.md`. Derefter udfyldes `config.js` med Project URL og publishable key.
 - Hver bruger skriver sit navn og den fælles kode én gang på forsiden. Alt gemmes stadig først på telefonen og deles, når der er dækning.
 - Materialelisten ligger øverst på forsiden. Tryk på den for at tilføje, krydse af eller slette linjer.
+- **Opgaver** ligger lige under: ét kort pr. person (Morten, Tommy, Daniel, Stephan – flere kan tilføjes) og et fælles kort. Alle kan se og krydse alle opgaver af, og der står hvem og hvornår. Morten kan lægge opgaver på alle lister, de andre på den fælles. **📋 Indsæt opgaver** tager tekst som `Tommy: hjælp Daniel i kælderen` (én pr. linje) og fordeler dem; linjer uden navn går på Fælles.
 
 ## Rapport, CSV og backup
 

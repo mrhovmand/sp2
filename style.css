@@ -173,3 +173,22 @@ progress{width:100%;height:18px}
 #vmeasure .vbtn{flex:none;min-height:46px}
 #vmeasure .vbtn:disabled{opacity:.4}
 .vbtn.on{background:#e0007a;border-color:#e0007a}
+/* Opgaver */
+.tgrid{display:grid;grid-template-columns:1fr 1fr;gap:4px 14px;margin-top:4px}
+.tline{display:flex;justify-content:space-between;align-items:center;font-size:16px;padding:2px 0}
+.tline.me{font-weight:700}
+.tn{min-width:30px;text-align:center;font-weight:800;border-radius:8px;padding:1px 6px;background:#e5eaf0}
+.tn.has{background:var(--blue);color:#fff}
+.tsec{margin:14px 0 6px}
+.tsec .thead{display:flex;justify-content:space-between;align-items:baseline;width:100%;background:none;border:0;padding:6px 2px;font-size:20px;color:inherit;cursor:pointer;text-align:left}
+.tsec.me .thead b{color:var(--blue)}
+#tpText{width:100%;font-size:17px;padding:12px;border-radius:12px;border:2px solid var(--line);margin:8px 0;box-sizing:border-box;font-family:inherit}
+#vmeasure{flex-wrap:wrap}
+#vmText{flex:1 1 100%;padding:4px 2px 2px}
+.vmrow{display:flex;gap:6px;flex-wrap:wrap;width:100%}
+.vmseg{display:flex;flex:none}
+.vmseg .vbtn{border-radius:0}
+.vmseg .vbtn:first-child{border-radius:10px 0 0 10px}
+.vmseg .vbtn:last-child{border-radius:0 10px 10px 0}
+#vmeasure .vbtn{padding:0 10px;font-size:15px}
+#toast{pointer-events:none}

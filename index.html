@@ -36,8 +36,12 @@
   <canvas id="vcanvas"></canvas>
   <div id="vmeasure" hidden>
     <div id="vmText">Sæt fingeren under første punkt</div>
-    <button data-v="mcal" class="vbtn" id="vmCal">Kalibrér</button>
-    <button data-v="mclear" class="vbtn">Ryd</button>
+    <div class="vmrow">
+      <span class="vmseg"><button data-v="mp2p" class="vbtn on" id="vmP2P">Punkt til punkt</button><button data-v="mroute" class="vbtn" id="vmRoute">Rute</button></span>
+      <button data-v="mundo" class="vbtn" id="vmUndo" hidden>↶ Fortryd</button>
+      <button data-v="mcal" class="vbtn" id="vmCal">Kalibrér</button>
+      <button data-v="mclear" class="vbtn">Ryd</button>
+    </div>
   </div>
   <div id="vmsg" hidden></div>
   <div class="vbar vbottom">

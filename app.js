@@ -178,6 +178,7 @@ function parentRoute() {
   if (p[0] === "o" && p[2] === "e") return "/o/" + encodeURIComponent(p[1]);
   if (p[0] === "ov" && p[1]) return "/o/" + encodeURIComponent(p[1]);
   if (p[0] === "rapport" || p[0] === "ov") return "/menu";
+  if (p[0] === "opgaver" && p[1]) return "/opgaver";
   return "/";
 }
 // Tilbage går ét niveau op (dåse → bolig → etage → opgang → oversigt) i stedet for gennem historikken
@@ -211,6 +212,7 @@ async function render() {
     if (p[0] === "menu") return viewMenu(m);
     if (p[0] === "rapport") return viewReport(m);
     if (p[0] === "materialer") return viewMaterials(m);
+    if (p[0] === "opgaver") return p[1] === "indsaet" ? viewTaskPaste(m) : p[1] ? viewTaskList(m, p[1]) : viewTasks(m);
     return viewHome(m);
   } catch (e) { console.error(e); m.innerHTML = `<div class="card">Der skete en fejl: ${esc(e.message)}</div>`; }
 }
@@ -225,7 +227,7 @@ async function viewHome(m) {
   const total = ALL_DRAWINGS().length;
   const mats = await metaGet("materials", {});
   if (my !== renderSeq) return;
-  let h = homeSyncHtml() + materialsCardHtml(mats);
+  let h = homeSyncHtml() + materialsCardHtml(mats) + tasksCardHtml(mats);
   h += `<div class="status small">${cached >= total
     ? `✅ Alle ${total} tegninger er gemt på telefonen.`
     : `Tegninger gemt offline: <b>${cached} / ${total}</b><div class="btnrow"><button class="btn yellow small" id="hHent">Hent alle tegninger</button></div>`}
@@ -253,7 +255,7 @@ function homeSyncHtml() {
   if (SESSION) return `<div class="small" id="syncLine" style="margin:0 4px 10px">${esc(syncStatusText())}</div>`;
   if (loginSkipped) return `<div class="small" style="margin:0 4px 10px"><button class="chip" id="showLogin">⚪ Ikke forbundet – tryk for at skrive fælles kode</button></div>`;
   return `<div class="card" id="loginCard"><b>Del registreringer med holdet</b>
-    <div class="small muted">Skriv den fælles kode én gang. Så ser I hinandens registreringer, navne, tagnoter og materialeliste.</div>
+    <div class="small muted">Skriv den fælles kode én gang. Så ser I hinandens registreringer, navne, tagnoter, materialeliste og opgaver.</div>
     <label class="lbl" for="lgName">Dit navn</label><input type="text" id="lgName" value="${esc(MY_NAME)}" placeholder="Fx Tommy" autocomplete="name">
     <label class="lbl" for="lgCode">Fælles kode</label><input type="text" id="lgCode" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
     <div class="btnrow"><button class="btn primary" id="lgGo">Forbind</button></div>
@@ -275,7 +277,7 @@ function bindLoginCard() {
 }
 
 /* ---------------- Materialeliste ---------------- */
-const openMats = (mats) => Object.values(mats).filter((x) => !x.deleted && !x.done).sort((a, b) => a.created.localeCompare(b.created));
+const openMats = (mats) => Object.values(mats).filter((x) => !x.kind && !x.deleted && !x.done).sort((a, b) => a.created.localeCompare(b.created));
 function materialsCardHtml(mats) {
   const open = openMats(mats);
   const lines = open.slice(0, 3).map((x) => `<div class="matline">• ${esc(x.text)}</div>`).join("");
@@ -295,7 +297,7 @@ async function viewMaterials(m) {
   const mats = await metaGet("materials", {});
   if (my !== renderSeq) return;
   const open = openMats(mats);
-  const done = Object.values(mats).filter((x) => !x.deleted && x.done).sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
+  const done = Object.values(mats).filter((x) => !x.kind && !x.deleted && x.done).sort((a, b) => (b.updated || "").localeCompare(a.updated || ""));
   const row = (x) => `<div class="matrow">
       <button class="check ${x.done ? "on done" : ""}" data-mtog="${esc(x.id)}"><span class="box">${x.done ? "✓" : ""}</span><span class="mattext">${esc(x.text)}<span class="small muted">${x.by ? esc(x.by) + " · " : ""}${fmtDate(x.created)}</span></span></button>
       <button class="btn danger matdel" data-mdel="${esc(x.id)}" aria-label="Slet">✕</button></div>`;
@@ -317,6 +319,177 @@ async function viewMaterials(m) {
   m.querySelectorAll("[data-mtog]").forEach((b) => b.onclick = async () => { const x = mats[b.dataset.mtog]; x.done = !x.done; await saveMat(x); viewMaterials(m); });
   m.querySelectorAll("[data-mdel]").forEach((b) => b.onclick = async () => { const x = mats[b.dataset.mdel]; x.deleted = true; await saveMat(x); viewMaterials(m); });
   const c = $("#matClear"); if (c) c.onclick = async () => { if (!(await confirmBox(`Slet ${done.length} afkrydsede linjer?`, "Slet"))) return; for (const x of done) { x.deleted = true; await saveMat(x); } viewMaterials(m); };
+}
+
+/* ---------------- Opgaver (et kort pr. person + fælles) ----------------
+   Gemmes i samme delte liste som materialerne (kind: "task" / "person"), så der ikke skal ændres noget i databasen.
+   Høflighedslås: Morten kan tilføje på alle lister, de andre kun på den fælles. Alle kan krydse alt af. */
+const SHARED = "faelles";
+const DEFAULT_PEOPLE = ["Morten", "Tommy", "Daniel", "Stephan"];
+const normName = (s) => String(s || "").toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/ph/g, "f").replace(/[^a-zæøå0-9]/g, "");
+const personId = (name) => "person:" + normName(name);
+const isBoss = () => !MY_NAME || normName(MY_NAME) === "morten";
+const canAddTo = (list) => list === SHARED || isBoss();
+const isTask = (x) => x.kind === "task";
+function peopleOf(store) {
+  const out = new Map();
+  DEFAULT_PEOPLE.forEach((n, i) => out.set(personId(n), { id: personId(n), name: n, order: i }));
+  for (const x of Object.values(store)) if (x.kind === "person") {
+    if (x.deleted) out.delete(x.id); else out.set(x.id, { id: x.id, name: x.name, order: out.get(x.id)?.order ?? 100 });
+  }
+  const me = personId(MY_NAME || "");
+  return [...out.values()].sort((a, b) => (b.id === me) - (a.id === me) || a.order - b.order || a.name.localeCompare(b.name, "da"));
+}
+const listName = (store, list) => list === SHARED ? "Fælles" : (peopleOf(store).find((p) => p.id === list)?.name || "Ukendt");
+const tasksIn = (store, list) => Object.values(store).filter((x) => isTask(x) && !x.deleted && x.list === list);
+const openTasks = (store, list) => tasksIn(store, list).filter((x) => !x.done).sort((a, b) => a.created.localeCompare(b.created));
+function fmtWhen(iso) {
+  if (!iso) return ""; const d = new Date(iso), t = d.toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" });
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(new Date()) - day(d)) / 864e5);
+  return diff === 0 ? `i dag ${t}` : diff === 1 ? `i går ${t}` : `${d.getDate()}/${d.getMonth() + 1} ${t}`;
+}
+function tasksCardHtml(store) {
+  const lists = [...peopleOf(store).map((p) => ({ id: p.id, name: p.name })), { id: SHARED, name: "Fælles" }];
+  const me = personId(MY_NAME || "");
+  const total = lists.reduce((n, l) => n + openTasks(store, l.id).length, 0);
+  const rows = lists.map((l) => { const n = openTasks(store, l.id).length;
+    return `<div class="tline${l.id === me ? " me" : ""}"><span>${esc(l.name)}${l.id === me ? " (dig)" : ""}</span><span class="tn ${n ? "has" : ""}">${n}</span></div>`; }).join("");
+  return `<button class="card matcard" data-go="/opgaver"><div class="mattitle"><b>Opgaver</b><span class="count ${total ? "has" : ""}">${total}</span></div><div class="tgrid">${rows}</div></button>`;
+}
+function taskRow(x) {
+  const meta = x.done ? `✓ ${esc(x.doneBy || "?")}, ${fmtWhen(x.doneAt)}` : `${x.by ? esc(x.by) + " · " : ""}${fmtWhen(x.created)}`;
+  const canDel = isBoss() || (x.by && normName(x.by) === normName(MY_NAME));
+  return `<div class="matrow">
+    <button class="check ${x.done ? "on done" : ""}" data-ttog="${esc(x.id)}"><span class="box">${x.done ? "✓" : ""}</span><span class="mattext">${esc(x.text)}<span class="small muted">${meta}</span></span></button>
+    ${canDel ? `<button class="btn danger matdel" data-tdel="${esc(x.id)}" aria-label="Slet">✕</button>` : ""}</div>`;
+}
+function bindTaskRows(m, store, rerender) {
+  m.querySelectorAll("[data-ttog]").forEach((b) => b.onclick = async () => {
+    const x = store[b.dataset.ttog]; x.done = !x.done;
+    if (x.done) { x.doneBy = MY_NAME || ""; x.doneAt = nowIso(); } else { x.doneBy = ""; x.doneAt = ""; }
+    await saveMat(x); rerender();
+  });
+  m.querySelectorAll("[data-tdel]").forEach((b) => b.onclick = async () => {
+    const x = store[b.dataset.tdel]; if (!(await confirmBox(`Slet opgaven "${x.text}"?`, "Slet"))) return;
+    x.deleted = true; await saveMat(x); rerender();
+  });
+}
+async function viewTasks(m) {
+  const my = renderSeq;
+  setTop("Opgaver", syncConfigured() ? "Delt med holdet" : "");
+  const store = await metaGet("materials", {});
+  if (my !== renderSeq) return;
+  const lists = [...peopleOf(store).map((p) => ({ id: p.id, name: p.name })), { id: SHARED, name: "Fælles" }];
+  const me = personId(MY_NAME || "");
+  let h = isBoss() ? `<div class="btnrow"><button class="btn primary" id="tPaste">📋 Indsæt opgaver</button></div>` : "";
+  for (const l of lists) {
+    const open = openTasks(store, l.id), done = tasksIn(store, l.id).filter((x) => x.done);
+    h += `<div class="tsec${l.id === me ? " me" : ""}"><button class="thead" data-go="/opgaver/${encodeURIComponent(l.id)}">
+        <b>${esc(l.name)}${l.id === me ? " (dig)" : ""}</b><span class="small muted">${done.length ? `${done.length} udført · ` : ""}åbn ›</span></button>
+      <div class="list">${open.map(taskRow).join("") || `<p class="muted small" style="margin:4px 2px">Ingen åbne opgaver.</p>`}</div></div>`;
+  }
+  if (isBoss()) h += `<div class="btnrow"><button class="btn small" id="tPerson">+ Tilføj person</button></div>`;
+  if (syncConfigured()) h += `<p class="small muted" id="syncLine">${esc(syncStatusText())}</p>`;
+  m.innerHTML = h;
+  bindTaskRows(m, store, () => viewTasks(m));
+  const tp = $("#tPaste"); if (tp) tp.onclick = () => go("/opgaver/indsaet");
+  const pe = $("#tPerson"); if (pe) pe.onclick = async () => {
+    const n = (prompt("Navn på den nye person") || "").trim(); if (!n) return;
+    const id = personId(n); if (lists.some((l) => l.id === id)) return toast(`${n} findes allerede`);
+    await saveMat({ id, kind: "person", name: n, created: nowIso() }); viewTasks(m);
+  };
+}
+async function viewTaskList(m, list) {
+  const my = renderSeq;
+  const store = await metaGet("materials", {});
+  if (my !== renderSeq) return;
+  const name = listName(store, list);
+  setTop(name === "Fælles" ? "Fælles opgaver" : `Opgaver – ${name}`, syncConfigured() ? "Delt med holdet" : "");
+  const open = openTasks(store, list);
+  const done = tasksIn(store, list).filter((x) => x.done).sort((a, b) => (b.doneAt || "").localeCompare(a.doneAt || ""));
+  const add = canAddTo(list);
+  m.innerHTML = `${add ? `<div class="matadd"><input type="text" id="tText" placeholder="Ny opgave …" enterkeyhint="done" autocomplete="off">
+      <button class="btn primary" id="tAdd">Tilføj</button></div>` : `<p class="small muted">Morten lægger opgaverne her. Du kan krydse af, når de er udført.</p>`}
+    <h2>Åbne (${open.length})</h2>
+    <div class="list">${open.map(taskRow).join("") || `<p class="muted">Ingen åbne opgaver.</p>`}</div>
+    ${done.length ? `<h2>Udført (${done.length})</h2><div class="list">${done.map(taskRow).join("")}</div>
+      ${isBoss() ? `<div class="btnrow"><button class="btn small" id="tClear">Ryd udførte</button></div>` : ""}` : ""}
+    ${isBoss() && list !== SHARED && !DEFAULT_PEOPLE.some((n) => personId(n) === list) ? `<div class="btnrow"><button class="btn small danger" id="tRmPerson">Fjern ${esc(name)} fra opgaver</button></div>` : ""}
+    ${syncConfigured() ? `<p class="small muted" id="syncLine">${esc(syncStatusText())}</p>` : ""}`;
+  const rer = () => viewTaskList(m, list);
+  bindTaskRows(m, store, rer);
+  if (add) {
+    const doAdd = async () => {
+      const t = $("#tText").value.trim(); if (!t) return $("#tText").focus();
+      await saveMat({ id: uid(), kind: "task", list, text: t, done: false, by: MY_NAME || "", created: nowIso() });
+      await rer(); $("#tText").focus();
+    };
+    $("#tAdd").onclick = doAdd;
+    $("#tText").onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); doAdd(); } };
+  }
+  const c = $("#tClear"); if (c) c.onclick = async () => { if (!(await confirmBox(`Slet ${done.length} udførte opgaver?`, "Slet"))) return; for (const x of done) { x.deleted = true; await saveMat(x); } rer(); };
+  const rp = $("#tRmPerson"); if (rp) rp.onclick = async () => {
+    if (!(await confirmBox(`Fjern ${name}? ${open.length ? `De ${open.length} åbne opgaver flyttes til Fælles.` : ""}`, "Fjern"))) return;
+    for (const x of open) { x.list = SHARED; await saveMat(x); }
+    await saveMat({ ...(store[list] || { id: list, kind: "person", name, created: nowIso() }), deleted: true }); go("/opgaver");
+  };
+}
+/* Indsæt opgaver: linjer som "Tommy: hjælp Daniel i kælderen". En linje med kun "Tommy:" gælder for linjerne under. */
+function parseTaskText(text, people) {
+  const byNorm = new Map(people.map((p) => [normName(p.name), p]));
+  const shared = new Set(["faelles", "fælles", "alle", "faelleslisten", "fælleslisten"]);
+  const items = []; let cur = null;
+  for (let raw of String(text).split(/\r?\n/)) {
+    const clean = raw.replace(/\*\*|__|`/g, "");
+    const bullet = /^\s*(?:[-•*–·]|\d+[.)])\s+/.test(clean);
+    let line = clean.replace(/^\s*(?:[-•*–·]|\d+[.)])\s+/, "").trim();
+    if (!line) continue;
+    if (!bullet) cur = null; // en overskrift ("Daniel:") gælder kun for punkt-linjerne lige under den
+    const mm = line.match(/^([A-Za-zÆØÅæøåÉé .'-]{2,30}?)\s*:\s*(.*)$/);
+    if (mm && mm[1].trim().split(/\s+/).length <= 3) {
+      const n = mm[1].trim(), key = normName(n);
+      const target = shared.has(key) ? { list: SHARED, name: "Fælles" } : byNorm.get(key) ? { list: byNorm.get(key).id, name: byNorm.get(key).name } : { list: personId(n), name: n[0].toUpperCase() + n.slice(1), isNew: true };
+      if (!mm[2].trim()) { cur = target; continue; }
+      items.push({ ...target, text: mm[2].trim() }); continue;
+    }
+    items.push({ ...(cur || { list: SHARED, name: "Fælles" }), text: line });
+  }
+  return items;
+}
+async function viewTaskPaste(m) {
+  const my = renderSeq;
+  setTop("Indsæt opgaver", "Fx kopieret fra Claude");
+  const store = await metaGet("materials", {});
+  if (my !== renderSeq) return;
+  const people = peopleOf(store);
+  m.innerHTML = `<div class="card small">Én opgave pr. linje, med navnet foran: <b>Tommy: hjælp Daniel i kælderen</b>. Linjer uden navn lægges på Fælles.</div>
+    <div class="btnrow"><button class="btn" id="tpClip">📋 Sæt ind fra udklipsholder</button></div>
+    <textarea id="tpText" rows="7" placeholder="Tommy: Hjælp Daniel i kælderen&#10;Stephan: Lav dørtelefon hos beboer i B1&#10;Morten: Lav SKS-test i blok K"></textarea>
+    <div id="tpPrev"></div>
+    <div class="btnrow"><button class="btn primary" id="tpAdd" disabled>Tilføj</button></div>`;
+  const prev = () => {
+    const items = parseTaskText($("#tpText").value, people);
+    const groups = new Map(); for (const it of items) { if (!groups.has(it.list)) groups.set(it.list, { ...it, tasks: [] }); groups.get(it.list).tasks.push(it.text); }
+    $("#tpPrev").innerHTML = items.length ? [...groups.values()].map((g) => `<div class="card"><b>${esc(g.name)}</b>${g.isNew ? ` <span class="badge b-afv">ny person</span>` : ""}
+      ${g.tasks.map((t) => `<div class="matline">• ${esc(t)}</div>`).join("")}</div>`).join("") : "";
+    $("#tpAdd").disabled = !items.length;
+    $("#tpAdd").textContent = items.length ? `Tilføj ${items.length} opgave${items.length > 1 ? "r" : ""}` : "Tilføj";
+    return items;
+  };
+  $("#tpText").oninput = prev;
+  $("#tpClip").onclick = async () => {
+    try { const t = await navigator.clipboard.readText(); if (!t) return toast("Udklipsholderen er tom"); $("#tpText").value = t; prev(); }
+    catch { toast("Tryk i feltet og vælg Sæt ind"); $("#tpText").focus(); }
+  };
+  $("#tpAdd").onclick = async () => {
+    const items = prev(); if (!items.length) return;
+    const now = nowIso();
+    for (const it of items) if (it.isNew && !store[it.list]) { await saveMat({ id: it.list, kind: "person", name: it.name, created: now }); store[it.list] = { id: it.list }; }
+    for (const it of items) await saveMat({ id: uid(), kind: "task", list: it.list, text: it.text, done: false, by: MY_NAME || "", created: nowIso() });
+    toast(`${items.length} opgave${items.length > 1 ? "r" : ""} tilføjet`);
+    go("/opgaver");
+  };
 }
 
 async function backupNudge() {
@@ -713,7 +886,7 @@ async function downloadAll() {
 
 /* ---------------- Tegningsviser (pinch-zoom på canvas = altid skarp) ---------------- */
 const V = { img: null, mip: null, s: 1, tx: 0, ty: 0, rot: 0, pts: new Map(), raf: 0, lastTap: 0, ctx: {}, base: null, cur: null,
-  measure: false, mp: [], drag: null, aim: null, aimOff: null, aimPt: null, cross: null, snapT: null, multi: false, cal: null };
+  measure: false, mp: [], drag: null, aim: null, aimOff: null, aimPt: null, cross: null, snapT: null, route: false, multi: false, cal: null };
 const AIM_OFF = 90; // sigtekorset sidder så mange pixels over fingeren
 const LOUPE_R = 52, LOUPE_Z = 3;
 document.addEventListener("click", (e) => {
@@ -850,7 +1023,8 @@ const angOf = (A, B) => { let d = Math.atan2(-(B.y - A.y), B.x - A.x) * 180 / Ma
 const angDiff = (a, t) => ((((a - t) % 180) + 270) % 180) - 90;
 // Punktet der måles fra, mens man sigter (det andet punkt), eller null
 function aimAnchor() {
-  if (V.drag !== null) return V.mp.length === 2 ? V.mp[1 - V.drag] : null;
+  if (V.drag !== null) return V.drag > 0 ? V.mp[V.drag - 1] : V.mp.length > 1 ? V.mp[1] : null;
+  if (V.route) return V.mp.length ? V.mp[V.mp.length - 1] : null;
   return V.mp.length === 1 ? V.mp[0] : null;
 }
 // Beregn sigtepunkt ud fra fingeren – med let lås ved hver 45°
@@ -891,48 +1065,66 @@ const scaleOf = (src) => (window.SP2_SCALE || {})[src] || 0; // mm pr. pixel
 function calOf(src) { return (V.cal && V.cal[src]) || 1; }
 // Punkterne der vises: de satte punkter + det punkt man er ved at sigte på
 function shownPts() {
-  if (V.aim && V.aimPt && V.drag === null) return V.mp.length === 1 ? [V.mp[0], V.aimPt] : [];
+  if (V.aim && V.aimPt && V.drag === null) {
+    if (V.route) return [...V.mp, V.aimPt];
+    return V.mp.length === 1 ? [V.mp[0], V.aimPt] : [];
+  }
   return V.mp;
 }
+const segM = (a, b) => Math.hypot(a.u - b.u, a.v - b.v) * scaleOf(V.cur) * calOf(V.cur) / 1000;
 function measuredMeters(pts = shownPts()) {
   if (pts.length < 2) return null;
-  const [a, b] = pts, px = Math.hypot(a.u - b.u, a.v - b.v);
-  return px * scaleOf(V.cur) * calOf(V.cur) / 1000;
+  let t = 0; for (let i = 1; i < pts.length; i++) t += segM(pts[i - 1], pts[i]);
+  return t;
 }
-function measuredAngle(pts = shownPts()) {
+function measuredAngle(pts = shownPts(), i = pts.length - 1) {
   if (pts.length < 2) return null;
-  return angOf(imgToScreen(pts[0].u, pts[0].v), imgToScreen(pts[1].u, pts[1].v));
+  const a = pts[i - 1], b = pts[i];
+  return angOf(imgToScreen(a.u, a.v), imgToScreen(b.u, b.v));
 }
 const fmtA = (a) => { const r = Math.round(a * 10) / 10; return (r % 1 ? r.toFixed(1).replace(".", ",") : String(r % 180)) + "°"; };
 const fmtM = (m) => m.toFixed(2).replace(".", ",") + " m";
 function paintMeasure(x, dpr) {
   x.setTransform(dpr, 0, 0, dpr, 0, 0);
   const pts = shownPts(), P = pts.map((p) => imgToScreen(p.u, p.v)), locked = V.aim && V.snapT !== null;
-  if (P.length === 2) {
-    x.lineCap = "round";
-    x.strokeStyle = "#fff"; x.lineWidth = 7; x.beginPath(); x.moveTo(P[0].x, P[0].y); x.lineTo(P[1].x, P[1].y); x.stroke();
-    x.strokeStyle = "#e0007a"; x.lineWidth = 3.5; x.beginPath(); x.moveTo(P[0].x, P[0].y); x.lineTo(P[1].x, P[1].y); x.stroke();
+  const { W } = vSize();
+  if (P.length >= 2) {
+    x.lineCap = "round"; x.lineJoin = "round";
+    const path = () => { x.beginPath(); x.moveTo(P[0].x, P[0].y); for (let i = 1; i < P.length; i++) x.lineTo(P[i].x, P[i].y); x.stroke(); };
+    x.strokeStyle = "#fff"; x.lineWidth = 7; path();
+    x.strokeStyle = "#e0007a"; x.lineWidth = 3.5; path();
   }
   for (const q of V.mp.map((p) => imgToScreen(p.u, p.v))) {
-    x.fillStyle = "rgba(224,0,122,.18)"; x.beginPath(); x.arc(q.x, q.y, 22, 0, 7); x.fill();
-    x.strokeStyle = "#e0007a"; x.lineWidth = 2.5; x.beginPath(); x.arc(q.x, q.y, 22, 0, 7); x.stroke();
-    x.beginPath(); x.moveTo(q.x - 9, q.y); x.lineTo(q.x + 9, q.y); x.moveTo(q.x, q.y - 9); x.lineTo(q.x, q.y + 9); x.stroke();
+    const r = V.route ? 14 : 22;
+    x.fillStyle = "rgba(224,0,122,.18)"; x.beginPath(); x.arc(q.x, q.y, r, 0, 7); x.fill();
+    x.strokeStyle = "#e0007a"; x.lineWidth = 2.5; x.beginPath(); x.arc(q.x, q.y, r, 0, 7); x.stroke();
+    x.beginPath(); x.moveTo(q.x - 7, q.y); x.lineTo(q.x + 7, q.y); x.moveTo(q.x, q.y - 7); x.lineTo(q.x, q.y + 7); x.stroke();
   }
-  const m = measuredMeters(pts);
-  if (m !== null) {
-    const t = fmtM(m) + "  " + (locked ? "🔒 " : "") + fmtA(locked ? V.snapT : measuredAngle(pts));
-    x.font = "bold 20px -apple-system, Arial, sans-serif";
-    const tw = x.measureText(t).width, { W } = vSize();
-    let mx = (P[0].x + P[1].x) / 2, my = (P[0].y + P[1].y) / 2 - 30;
-    if (V.aim && V.aimPt) { // mens man sigter: over forstørrelsesglasset
-      const A = imgToScreen(V.aimPt.u, V.aimPt.v); mx = A.x; my = A.y - LOUPE_R - 26;
-      if (my < 24) my = A.y + LOUPE_R + 26;
-    }
+  const label = (t, mx, my, size, bg) => {
+    x.font = `bold ${size}px -apple-system, Arial, sans-serif`;
+    const tw = x.measureText(t).width, hh = size + 12;
     mx = Math.max(tw / 2 + 12, Math.min(W - tw / 2 - 12, mx));
-    x.fillStyle = locked ? "rgba(0,120,68,.92)" : "rgba(0,0,0,.82)"; x.fillRect(mx - tw / 2 - 10, my - 18, tw + 20, 34);
+    x.fillStyle = bg; x.fillRect(mx - tw / 2 - 8, my - hh / 2, tw + 16, hh);
     x.fillStyle = "#fff"; x.textAlign = "center"; x.textBaseline = "middle"; x.fillText(t, mx, my);
     x.textAlign = "start"; x.textBaseline = "alphabetic";
+  };
+  const live = V.aim && V.aimPt;
+  if (V.route) {
+    // Længde på hvert stykke ved stregen (det stykke man er ved at sigte, står over forstørrelsesglasset)
+    for (let i = 1; i < P.length; i++) {
+      if (live && V.drag === null && i === P.length - 1) continue;
+      label(fmtM(segM(pts[i - 1], pts[i])), (P[i - 1].x + P[i].x) / 2, (P[i - 1].y + P[i].y) / 2, 15, "rgba(0,0,0,.75)");
+    }
   }
+  if (P.length < 2) return;
+  const ai = V.drag !== null ? Math.max(1, V.drag) : P.length - 1;
+  if (V.route && !live) return;
+  const seg = segM(pts[ai - 1], pts[ai]), ang = locked ? V.snapT : measuredAngle(pts, ai);
+  let t = fmtM(V.route ? seg : measuredMeters(pts)) + "  " + (locked ? "🔒 " : "") + fmtA(ang);
+  if (V.route && P.length > 2) t += `  · i alt ${fmtM(measuredMeters(pts))}`;
+  let mx = (P[0].x + P[1].x) / 2, my = (P[0].y + P[1].y) / 2 - 30;
+  if (live) { const A = imgToScreen(V.aimPt.u, V.aimPt.v); mx = A.x; my = A.y - LOUPE_R - 26; if (my < 24) my = A.y + LOUPE_R + 26; }
+  label(t, mx, my, 20, locked ? "rgba(0,120,68,.92)" : "rgba(0,0,0,.82)");
 }
 function updateMeasureUI() {
   const btn = $("#vMeasureBtn"), bar = $("#vmeasure");
@@ -942,10 +1134,12 @@ function updateMeasureUI() {
   if (!bar) return;
   bar.hidden = !V.measure;
   if (!V.measure) return;
-  const m = measuredMeters(V.mp), an = measuredAngle(V.mp);
-  $("#vmText").innerHTML = m !== null
-    ? `<b>${fmtM(m)}</b> · ${fmtA(an)}${calOf(V.cur) !== 1 ? ' <span class="small">(kalibreret)</span>' : ""}`
-    : V.mp.length === 1 ? "Sæt fingeren under punkt 2" : "Sæt fingeren under første punkt";
+  const m = measuredMeters(V.mp), an = measuredAngle(V.mp), kal = calOf(V.cur) !== 1 ? ' <span class="small">(kalibreret)</span>' : "";
+  $("#vmText").innerHTML = V.route
+    ? (m !== null ? `Rute: <b>${fmtM(m)}</b> · ${V.mp.length - 1} stk.${kal}` : V.mp.length ? "Sæt fingeren under næste punkt" : "Sæt fingeren under første punkt")
+    : m !== null ? `<b>${fmtM(m)}</b> · ${fmtA(an)}${kal}` : V.mp.length === 1 ? "Sæt fingeren under punkt 2" : "Sæt fingeren under første punkt";
+  $("#vmP2P").classList.toggle("on", !V.route); $("#vmRoute").classList.toggle("on", V.route);
+  $("#vmUndo").hidden = !V.route; $("#vmUndo").disabled = !V.mp.length;
   $("#vmCal").disabled = m === null && calOf(V.cur) === 1;
 }
 async function calibrate() {
@@ -980,14 +1174,14 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
         // Én finger = sigte. Sigtekorset sidder over fingeren, så man kan se, hvor punktet lander.
         // Starter man tæt på et eksisterende punkt (eller dets sigte), flyttes det punkt med samme afstand til fingeren.
         const near = (q) => { const sp = imgToScreen(q.u, q.v); return Math.min(Math.hypot(sp.x - f.x, sp.y - f.y), Math.hypot(sp.x - f.x, sp.y - (f.y - AIM_OFF))); };
-        let best = -1, bd = 36;
+        let best = -1, bd = 34;
         V.mp.forEach((q, i) => { const d = near(q); if (d < bd) { bd = d; best = i; } });
-        V.snapT = null;
-        if (best >= 0) { const sp = imgToScreen(V.mp[best].u, V.mp[best].v); V.drag = best; V.aimOff = { dx: sp.x - f.x, dy: sp.y - f.y }; }
-        else { V.drag = null; V.aimOff = { dx: 0, dy: -AIM_OFF }; }
+        V.snapT = null; V.drag = null; V.aimOff = { dx: 0, dy: -AIM_OFF };
+        // Et punkt flyttes først, når fingeren faktisk trækker – et rent tryk sætter altid et nyt punkt
+        V.grab = best >= 0 ? { i: best, f, off: (() => { const sp = imgToScreen(V.mp[best].u, V.mp[best].v); return { dx: sp.x - f.x, dy: sp.y - f.y }; })() } : null;
         updateAim(f);
         draw();
-      } else { V.multi = true; V.aim = null; V.drag = null; draw(); }
+      } else { V.multi = true; V.aim = null; V.drag = null; V.grab = null; draw(); }
       return;
     }
     if (V.pts.size === 1) {
@@ -1000,7 +1194,9 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
     if (!V.pts.has(e.pointerId) || !V.img) return;
     V.pts.set(e.pointerId, pos(e));
     if (V.measure && V.aim && V.pts.size === 1) {
-      updateAim(pos(e));
+      const f = pos(e);
+      if (V.grab && V.drag === null && Math.hypot(f.x - V.grab.f.x, f.y - V.grab.f.y) > 10) { V.drag = V.grab.i; V.aimOff = V.grab.off; V.snapT = null; }
+      updateAim(f);
       if (V.drag !== null) updateMeasureUI();
       draw(); return;
     }
@@ -1014,12 +1210,12 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
     V.pts.delete(e.pointerId); prev = state();
     if (V.measure && V.img) {
       if (wasSingle && V.aim && V.aimPt) {
-        if (e.type === "pointerup" && V.drag === null) { const pt = V.aimPt; V.mp = V.mp.length >= 2 ? [pt] : [...V.mp, pt]; }
+        if (e.type === "pointerup" && V.drag === null) { const pt = V.aimPt; V.mp = V.route ? [...V.mp, pt].slice(-60) : V.mp.length >= 2 ? [pt] : [...V.mp, pt]; }
         if (e.type === "pointerup" || V.drag === null) V.cross = V.aimPt;
         updateMeasureUI();
       }
       if (V.pts.size === 0) V.multi = false;
-      V.aim = null; V.aimPt = null; V.drag = null; V.snapT = null; draw();
+      V.aim = null; V.aimPt = null; V.drag = null; V.grab = null; V.snapT = null; draw();
     }
   };
   c.addEventListener("pointerup", up); c.addEventListener("pointercancel", up);
@@ -1039,10 +1235,13 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
     if (a === "measure") {
       V.measure = !V.measure; V.mp = []; V.cross = null;
       if (V.measure && !V.cal) metaGet("cal", {}).then((c) => { V.cal = c; updateMeasureUI(); });
+      if (V.measure) metaGet("measureRoute", false).then((r) => { if (r !== V.route && !V.mp.length) { V.route = r; updateMeasureUI(); draw(); } });
       updateMeasureUI(); draw();
-      if (V.measure) toast("Sæt fingeren lige under det sted, du vil måle fra – sigtekorset forstørrer, så længe fingeren er nede. Slip for at sætte punktet. Målingen låser let ved 0°, 45° og 90°. To fingre flytter og zoomer.", 4500);
+      if (V.measure) toast("Sæt fingeren lige under det sted, du vil måle fra – sigtekorset forstørrer, så længe fingeren er nede. Slip for at sætte punktet. Vælg Rute for at måle gennem flere punkter. To fingre flytter og zoomer.", 4500);
     }
     if (a === "mclear") { V.mp = []; updateMeasureUI(); draw(); }
+    if (a === "mp2p" || a === "mroute") { const r = a === "mroute"; if (r !== V.route) { V.route = r; V.mp = []; metaSet("measureRoute", r); } updateMeasureUI(); draw(); }
+    if (a === "mundo") { V.mp.pop(); if (V.mp.length) V.cross = V.mp[V.mp.length - 1]; updateMeasureUI(); draw(); }
     if (a === "mcal") calibrate();
     if (a === "list") {
       const list = relatedDrawings();
