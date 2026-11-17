@@ -108,7 +108,7 @@ const primaryFloor = (u) => u.f[0];
 const ovImg = (b) => `tegninger/${b}-2.png`;
 const SIG_IMG = "tegninger/signatur.png";
 const PLANS = window.SP2_PLANS || [];
-const ALL_DRAWINGS = () => [...new Set([...[...UNITS.values()].filter((u) => u.img).map((u) => u.img), ...BUILDINGS.map(ovImg), SIG_IMG, ...PLANS.flatMap((p) => [p.img, p.full]), ...SITE.flatMap((d) => [d.src, d.full].filter(Boolean)), ...(ORIENT ? [ORIENT.thumb, ORIENT.img, ORIENT.full] : [])])];
+const ALL_DRAWINGS = () => [...new Set([...[...UNITS.values()].filter((u) => u.img).map((u) => u.img), ...BUILDINGS.map(ovImg), SIG_IMG, ...PLANS.flatMap((p) => [p.img, p.full]), ...SITE.flatMap((d) => [d.src, d.full].filter(Boolean)), ...(ORIENT ? [ORIENT.thumb, ORIENT.img, ORIENT.full] : []), ...Object.values(window.SP2_OPGMAP || {}).map((o) => o.img)])];
 // Etage-/kældertegninger for en opgang og etage
 const plansFor = (opgId, floor) => { const o = OPG.get(opgId); return o ? PLANS.filter((p) => p.b.includes(o.b) && p.f.includes(floor) && (!p.o || p.o.includes(opgId))) : []; };
 const SITE = window.SP2_SITE || [], ORIENT = window.SP2_ORIENT || null;
@@ -299,9 +299,29 @@ function bindOrient() {
     const b = sp.dataset.ob, ops = [...OPG.values()].filter((o) => o.b === b);
     sp.classList.add("hit"); setTimeout(() => sp.classList.remove("hit"), 400);
     if (ops.length === 1) return go("/o/" + encodeURIComponent(ops[0].id));
+    const om = (window.SP2_OPGMAP || {})[b];
+    if (om) return pickOpgang(b, om, ops);
     const v = await dialog(`Bygning ${b} – vælg opgang`, [...ops.map((o) => ({ label: o.id, value: o.id, cls: "primary" })), { label: "Annullér", value: null }]);
     if (v) go("/o/" + encodeURIComponent(v));
   };
+}
+// Zoomet stueplan af bygningen med store knapper på hver opgang
+function pickOpgang(b, om, ops) {
+  const ov = document.createElement("div"); ov.className = "opgpick";
+  const chips = Object.entries(om.chips).filter(([id]) => OPG.has(id))
+    .map(([id, [x, y]]) => `<button class="ochip" data-opg="${esc(id)}" style="left:${Math.min(95, Math.max(5, x * 100))}%;top:${Math.min(94, Math.max(6, y * 100))}%">${esc(id.split("-")[1])}</button>`).join("");
+  ov.innerHTML = `<div class="opgbox"><div class="opghead"><b>Bygning ${esc(b)} – tryk på din opgang</b><button class="btn small" data-x>✕</button></div>
+    <div class="opgimg${Object.keys(om.chips).length > 4 ? " dense" : ""}"><img src="${esc(om.img)}" alt="Stueplan ${esc(b)}">${chips}</div>
+    <div class="small muted" style="margin:6px 2px">Stueplanen – bogstaverne står ved opgangene.</div>
+    <div class="grid">${ops.map((o) => `<button class="tile" data-opg="${esc(o.id)}"><b>${esc(o.id)}</b></button>`).join("")}</div></div>`;
+  const close = () => ov.remove();
+  ov.onclick = (e) => {
+    const t = e.target.closest("[data-opg]");
+    if (t) { close(); go("/o/" + encodeURIComponent(t.dataset.opg)); return; }
+    if (e.target === ov || e.target.closest("[data-x]")) close();
+  };
+  window.addEventListener("hashchange", close, { once: true });
+  document.body.appendChild(ov);
 }
 /* ---------------- Terræn, diagrammer og fællesrum ---------------- */
 function viewSite(m) {

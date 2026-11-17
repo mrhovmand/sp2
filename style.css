@@ -203,3 +203,14 @@ progress{width:100%;height:18px}
 .uthumb canvas{display:block;width:100%}
 .uthumbtxt{display:block;padding:8px;font-size:15px;font-weight:700;background:#f3f5f7;border-top:1px solid var(--line)}
 .ospot span{position:absolute;left:2px;top:2px;background:rgba(0,70,170,.85);color:#fff;font-size:11px;font-weight:800;line-height:1;padding:2px 3px;border-radius:4px}
+/* Vælg opgang på bygningens stueplan */
+.opgpick{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:calc(10px + var(--safe-top)) 8px 10px;overflow:auto}
+.opgbox{background:#fff;border-radius:16px;padding:10px;width:100%;max-width:640px}
+.opghead{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;font-size:18px}
+.opghead .btn{width:auto;min-width:52px}
+.opgimg{position:relative;border:1px solid var(--line);border-radius:10px}
+.opgimg img{display:block;width:100%;height:auto}
+.ochip{position:absolute;transform:translate(-50%,-50%);min-width:46px;height:46px;padding:0 8px;border-radius:23px;border:3px solid #fff;background:#e0007a;color:#fff;font-size:20px;font-weight:800;box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:pointer}
+.ochip:active{background:#9e0057}
+.opgbox .grid{margin-top:6px}
+.opgimg.dense .ochip{min-width:36px;height:36px;border-radius:18px;font-size:16px;border-width:2px;padding:0 5px}
