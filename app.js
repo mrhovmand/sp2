@@ -312,7 +312,7 @@ function pickOpgang(b, om, ops) {
     .map(([id, [x, y]]) => `<button class="ochip" data-opg="${esc(id)}" style="left:${Math.min(95, Math.max(5, x * 100))}%;top:${Math.min(94, Math.max(6, y * 100))}%">${esc(id.split("-")[1])}</button>`).join("");
   ov.innerHTML = `<div class="opgbox"><div class="opghead"><b>Bygning ${esc(b)} – tryk på din opgang</b><button class="btn small" data-x>✕</button></div>
     <div class="opgimg${Object.keys(om.chips).length > 4 ? " dense" : ""}"><img src="${esc(om.img)}" alt="Stueplan ${esc(b)}">${chips}</div>
-    <div class="small muted" style="margin:6px 2px">Bogstaverne står i de enkelte opgange.</div>
+    <div class="small muted" style="margin:6px 2px">Bogstaverne står ved opgangene.</div>
     <div class="grid">${ops.map((o) => `<button class="tile" data-opg="${esc(o.id)}"><b>${esc(o.id)}</b></button>`).join("")}</div></div>`;
   const close = () => ov.remove();
   ov.onclick = (e) => {
