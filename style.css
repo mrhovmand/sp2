@@ -192,3 +192,14 @@ progress{width:100%;height:18px}
 .vmseg .vbtn:last-child{border-radius:0 10px 10px 0}
 #vmeasure .vbtn{padding:0 10px;font-size:15px}
 #toast{pointer-events:none}
+/* Orienteringsplan */
+.orient{padding:10px 10px 8px}
+.owrap{position:relative;margin-top:6px;border-radius:10px;overflow:hidden;border:1px solid var(--line);cursor:zoom-in}
+.owrap img{display:block;width:100%;height:auto}
+.ospot{position:absolute;background:rgba(0,90,200,.06);border:2px solid rgba(0,90,200,.45);border-radius:6px;padding:0;min-height:0;cursor:pointer}
+.ospot.hit,.ospot:active{background:rgba(0,90,200,.28)}
+/* Boligtegning på boligsiden */
+.uthumb{display:block;width:100%;padding:0;margin:4px 0 12px;border:2px solid var(--line);border-radius:14px;background:#fff;overflow:hidden;cursor:zoom-in;text-align:center;color:inherit}
+.uthumb canvas{display:block;width:100%}
+.uthumbtxt{display:block;padding:8px;font-size:15px;font-weight:700;background:#f3f5f7;border-top:1px solid var(--line)}
+.ospot span{position:absolute;left:2px;top:2px;background:rgba(0,70,170,.85);color:#fff;font-size:11px;font-weight:800;line-height:1;padding:2px 3px;border-radius:4px}

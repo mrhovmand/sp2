@@ -108,9 +108,11 @@ const primaryFloor = (u) => u.f[0];
 const ovImg = (b) => `tegninger/${b}-2.png`;
 const SIG_IMG = "tegninger/signatur.png";
 const PLANS = window.SP2_PLANS || [];
-const ALL_DRAWINGS = () => [...new Set([...[...UNITS.values()].filter((u) => u.img).map((u) => u.img), ...BUILDINGS.map(ovImg), SIG_IMG, ...PLANS.flatMap((p) => [p.img, p.full])])];
+const ALL_DRAWINGS = () => [...new Set([...[...UNITS.values()].filter((u) => u.img).map((u) => u.img), ...BUILDINGS.map(ovImg), SIG_IMG, ...PLANS.flatMap((p) => [p.img, p.full]), ...SITE.flatMap((d) => [d.src, d.full].filter(Boolean)), ...(ORIENT ? [ORIENT.thumb, ORIENT.img, ORIENT.full] : [])])];
 // Etage-/kældertegninger for en opgang og etage
-const plansFor = (opgId, floor) => { const o = OPG.get(opgId); return o ? PLANS.filter((p) => p.b.includes(o.b) && p.f.includes(floor)) : []; };
+const plansFor = (opgId, floor) => { const o = OPG.get(opgId); return o ? PLANS.filter((p) => p.b.includes(o.b) && p.f.includes(floor) && (!p.o || p.o.includes(opgId))) : []; };
+const SITE = window.SP2_SITE || [], ORIENT = window.SP2_ORIENT || null;
+const planIcon = (p) => p.k === "brand" ? "🔥" : p.k === "faelles" ? "👥" : "📐";
 // Knap der åbner en tegning med kontekst (opgang/etage/bolig) til "Tegninger"-menuen i viseren
 function drawBtn(cls, label, d, ctx) {
   return `<button class="${cls}" data-draw="${esc(d.src)}" data-dtitle="${esc(d.title)}"${d.full ? ` data-full="${esc(d.full)}"` : ""}${ctx.unit ? ` data-unit="${esc(ctx.unit)}"` : ""}${ctx.opg ? ` data-opg="${esc(ctx.opg)}"` : ""}${ctx.floor ? ` data-floor="${esc(ctx.floor)}"` : ""}>${label}</button>`;
@@ -179,6 +181,7 @@ function parentRoute() {
   if (p[0] === "ov" && p[1]) return "/o/" + encodeURIComponent(p[1]);
   if (p[0] === "rapport" || p[0] === "ov") return "/menu";
   if (p[0] === "opgaver" && p[1]) return "/opgaver";
+  if (p[0] === "terraen") return "/";
   return "/";
 }
 // Tilbage går ét niveau op (dåse → bolig → etage → opgang → oversigt) i stedet for gennem historikken
@@ -212,6 +215,7 @@ async function render() {
     if (p[0] === "menu") return viewMenu(m);
     if (p[0] === "rapport") return viewReport(m);
     if (p[0] === "materialer") return viewMaterials(m);
+    if (p[0] === "terraen") return viewSite(m);
     if (p[0] === "opgaver") return p[1] === "indsaet" ? viewTaskPaste(m) : p[1] ? viewTaskList(m, p[1]) : viewTasks(m);
     return viewHome(m);
   } catch (e) { console.error(e); m.innerHTML = `<div class="card">Der skete en fejl: ${esc(e.message)}</div>`; }
@@ -227,11 +231,7 @@ async function viewHome(m) {
   const total = ALL_DRAWINGS().length;
   const mats = await metaGet("materials", {});
   if (my !== renderSeq) return;
-  let h = homeSyncHtml() + materialsCardHtml(mats) + tasksCardHtml(mats);
-  h += `<div class="status small">${cached >= total
-    ? `✅ Alle ${total} tegninger er gemt på telefonen.`
-    : `Tegninger gemt offline: <b>${cached} / ${total}</b><div class="btnrow"><button class="btn yellow small" id="hHent">Hent alle tegninger</button></div>`}
-    ${nudge}</div>`;
+  let h = homeSyncHtml() + (nudge ? `<div class="status small">${nudge}</div>` : "") + materialsCardHtml(mats) + tasksCardHtml(mats) + orientHtml();
   for (const b of BUILDINGS) {
     const ops = [...OPG.values()].filter((o) => o.b === b);
     h += `<h2>Bygning ${b}</h2><div class="grid">`;
@@ -244,9 +244,15 @@ async function viewHome(m) {
     }
     h += `</div>`;
   }
+  if (SITE.length) h += `<h2>Hele pladsen</h2><button class="row" data-go="/terraen"><div class="main"><div class="name">🗺️ Terræn, diagrammer og fællesrum</div>
+    <div class="sub">Orienteringsplan, kabelskabe, hovedledningsdiagram, hovedudligning, fællesarealer</div></div><span class="chev">›</span></button>`;
+  h += `<div class="status small" style="margin-top:18px">${cached >= total
+    ? `✅ Alle ${total} tegninger er gemt på telefonen.`
+    : `Tegninger gemt offline: <b>${cached} / ${total}</b><div class="btnrow"><button class="btn yellow small" id="hHent">Hent alle tegninger</button></div>`}</div>`;
   m.innerHTML = h;
   const hb = $("#hHent"); if (hb) hb.onclick = () => go("/menu");
   bindLoginCard();
+  bindOrient();
 }
 /* ---------------- Deling: login-kort og status på forsiden ---------------- */
 let loginSkipped = false;
@@ -274,6 +280,37 @@ function bindLoginCard() {
     try { await syncLogin(code, name); toast("Forbundet – deler med holdet"); render(); }
     catch (e) { go_.disabled = false; $("#lgMsg").textContent = e.status === 400 ? "Forkert kode – prøv igen." : "Kunne ikke forbinde: " + e.message; }
   };
+}
+
+/* ---------------- Orienteringsplan på forsiden ---------------- */
+function orientHtml() {
+  if (!ORIENT) return "";
+  const spots = Object.entries(ORIENT.hs).filter(([b]) => BUILDINGS.includes(b))
+    .sort((a, b) => (a[0] === "J2") - (b[0] === "J2")) // J2 øverst, hvor den overlapper J1
+    .map(([b, r]) => `<button class="ospot" data-ob="${esc(b)}" style="left:${r[0] * 100}%;top:${r[1] * 100}%;width:${(r[2] - r[0]) * 100}%;height:${(r[3] - r[1]) * 100}%" aria-label="Bygning ${esc(b)}"><span>${esc(b)}</span></button>`).join("");
+  return `<div class="card orient"><div class="mattitle"><b>Byggepladsen</b><span class="small muted">tryk på en bygning</span></div>
+    <div class="owrap" id="oWrap"><img src="${esc(ORIENT.thumb)}" alt="Orienteringsplan" loading="lazy">${spots}</div></div>`;
+}
+function bindOrient() {
+  const w = $("#oWrap"); if (!w) return;
+  w.onclick = async (e) => {
+    const sp = e.target.closest("[data-ob]");
+    if (!sp) return openDrawing({ src: ORIENT.img, full: ORIENT.full, title: ORIENT.title }, {});
+    const b = sp.dataset.ob, ops = [...OPG.values()].filter((o) => o.b === b);
+    sp.classList.add("hit"); setTimeout(() => sp.classList.remove("hit"), 400);
+    if (ops.length === 1) return go("/o/" + encodeURIComponent(ops[0].id));
+    const v = await dialog(`Bygning ${b} – vælg opgang`, [...ops.map((o) => ({ label: o.id, value: o.id, cls: "primary" })), { label: "Annullér", value: null }]);
+    if (v) go("/o/" + encodeURIComponent(v));
+  };
+}
+/* ---------------- Terræn, diagrammer og fællesrum ---------------- */
+function viewSite(m) {
+  setTop("Terræn og diagrammer", "Hele byggepladsen");
+  const groups = new Map(); for (const d of SITE) { if (!groups.has(d.g)) groups.set(d.g, []); groups.get(d.g).push(d); }
+  const ico = { "Terræn": "🗺️", "Diagrammer": "⚡", "Hovedudligning": "⏚", "Fællesarealer": "👥" };
+  let h = "";
+  for (const [g, ds] of groups) h += `<h2>${ico[g] || ""} ${esc(g)}</h2><div class="list">${ds.map((d) => drawBtn("btn", esc(d.label), d, {})).join("")}</div>`;
+  m.innerHTML = h;
 }
 
 /* ---------------- Materialeliste ---------------- */
@@ -511,7 +548,7 @@ async function viewOpgang(m, opgId) {
     const s = statsUnits(us.filter((u) => primaryFloor(u) === f));
     const nb = us.filter((u) => u.real).length;
     h += `<button class="row" data-go="/o/${encodeURIComponent(opgId)}/e/${encodeURIComponent(f)}">
-      <div class="main"><div class="name">${esc(f)}</div><div class="sub">${nb ? `${nb} boliger` : "Ingen boliger på tegningerne"}${plansFor(opgId, f).some((p) => p.k !== "brand") ? " · 📐 etageplan" : ""}${plansFor(opgId, f).some((p) => p.k === "brand") ? " · 🔥 brandplan" : ""}${s.n ? ` · ${s.n} dåser` : ""}${f === "Tag" && TAG[opgId] ? " · har tagnoter" : ""}</div></div>
+      <div class="main"><div class="name">${esc(f)}</div><div class="sub">${nb ? `${nb} boliger` : "Ingen boliger på tegningerne"}${plansFor(opgId, f).some((p) => !p.k) ? " · 📐 etageplan" : ""}${plansFor(opgId, f).some((p) => p.k === "faelles") ? " · 👥 fællesrum" : ""}${plansFor(opgId, f).some((p) => p.k === "brand") ? " · 🔥 brandplan" : ""}${s.n ? ` · ${s.n} dåser` : ""}${f === "Tag" && TAG[opgId] ? " · har tagnoter" : ""}</div></div>
       ${s.dev ? `<span class="badge b-afv">${s.dev} afv.</span>` : ""}<span class="count ${s.n ? "has" : ""}">${s.n}</span><span class="chev">›</span></button>`;
   }
   h += `</div>${tagNoteHtml(opgId)}`;
@@ -536,7 +573,7 @@ async function viewFloor(m, opgId, floor) {
   const us = unitsOn(opgId, floor);
   const pl = plansFor(opgId, floor);
   let h = pl.length
-    ? `<div class="list" style="margin-bottom:14px">${pl.map((p) => drawBtn("btn", `${p.k === "brand" ? "🔥" : "📐"} ${esc(p.s)}`, planDraw(p), { opg: opgId, floor })).join("")}</div>`
+    ? `<div class="list" style="margin-bottom:14px">${pl.map((p) => drawBtn("btn", `${planIcon(p)} ${esc(p.s)}`, planDraw(p), { opg: opgId, floor })).join("")}</div>`
     : `<p class="small muted">Ingen etageplan for denne etage i appen endnu.</p>`;
   h += `<div class="list">`;
   for (const u of us) {
@@ -559,7 +596,7 @@ async function viewUnit(m, unitId) {
   setTop(`${u.o} · ${unitName(u)}`, u.real ? `Side ${u.id} · ${u.k}` : u.f[0]);
   const regs = regsOf(unitId);
   let h = `<div class="btnrow"><button class="btn primary" data-go="/d/new/${encodeURIComponent(unitId)}">＋ Ny registrering</button></div>
-    <div class="btnrow">${drawBtn("btn", "📐 Tegning", unitDraw(u), { unit: u.id })}</div>`;
+    ${drawBtn("uthumb", `<canvas id="uThumb"></canvas><span class="uthumbtxt">Tryk for stor tegning · zoom og mål</span>`, unitDraw(u), { unit: u.id })}`;
   if (u.real) {
     h += `<div class="card"><div><b>Navn:</b> ${esc(unitName(u))} ${isProposed(u) ? `<span class="badge b-prop">foreslået</span>` : ""}</div>
       <div class="small muted">Tegningen viser ikke tv./th. – tjek på stedet og ret navnet hvis det er forkert.</div>
@@ -580,6 +617,7 @@ async function viewUnit(m, unitId) {
   });
   h += `</div>`;
   m.innerHTML = h;
+  paintUnitThumb(unitDraw(u).src);
   if (u.f.includes("Tag")) bindTagNote(u.o);
   if (u.real) {
     $("#uRename").onclick = () => { $("#renameBox").hidden = false; $("#uName").focus(); };
@@ -592,6 +630,32 @@ async function viewUnit(m, unitId) {
     };
     $("#uReset").onclick = async () => { delete NAMES[u.id]; delete CONFIRMED[u.id]; await metaSet("names", NAMES); await metaSet("confirmed", CONFIRMED); markMetaDirty("name:" + u.id); markMetaDirty("conf:" + u.id); render(); };
   }
+}
+
+// Lille udgave af boligtegningen på boligsiden (kun selve planen, uden titelfelt)
+async function paintUnitThumb(src) {
+  const c = $("#uThumb"); if (!c) return;
+  const img = new Image(); img.src = src;
+  try { await img.decode(); } catch { c.parentElement.querySelector(".uthumbtxt").textContent = "📐 Tegning – tryk for at åbne"; c.remove(); return; }
+  if (!c.isConnected) return;
+  const f = window.SP2_FIT && window.SP2_FIT[src.split("/").pop().replace(".png", "")];
+  const w = img.naturalWidth, h = img.naturalHeight;
+  const [sx, sy, sw, sh] = f ? [f[0] * w, f[1] * h, (f[2] - f[0]) * w, (f[3] - f[1]) * h] : [0, 0, w, h];
+  const cw = c.parentElement.clientWidth || 360, dpr = Math.min(window.devicePixelRatio || 1, 3);
+  const ch = Math.min(cw * sh / sw, 520);
+  const k = Math.min(cw / sw, ch / sh);
+  c.width = Math.round(cw * dpr); c.height = Math.round(ch * dpr); c.style.height = ch + "px";
+  // nedskaler i trin for skarp linjegrafik
+  let srcCv = img, ssx = sx, ssy = sy, ssw = sw, ssh = sh;
+  while (ssw / 2 > sw * k * dpr * 1.2) {
+    const t = document.createElement("canvas"); t.width = Math.round(ssw / 2); t.height = Math.round(ssh / 2);
+    const tx = t.getContext("2d"); tx.imageSmoothingQuality = "high"; tx.drawImage(srcCv, ssx, ssy, ssw, ssh, 0, 0, t.width, t.height);
+    srcCv = t; ssx = 0; ssy = 0; ssw = t.width; ssh = t.height;
+  }
+  const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+  x.imageSmoothingQuality = "high";
+  const dw = sw * k * dpr, dh = sh * k * dpr;
+  x.drawImage(srcCv, ssx, ssy, ssw, ssh, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
 }
 
 /* ---------------- Dåse (registrering) ---------------- */
@@ -812,7 +876,7 @@ async function viewMenu(m) {
     <h2>Offline</h2>
     <div class="card"><div>Tegninger på telefonen: <b id="cCount">${cached} / ${total}</b></div>
       <progress id="cProg" max="${total}" value="${cached}"></progress>
-      <div class="btnrow"><button class="btn yellow" id="mHent">Hent alle tegninger (ca. 55 MB)</button></div>
+      <div class="btnrow"><button class="btn yellow" id="mHent">Hent alle tegninger (ca. 60 MB)</button></div>
       <div class="small muted">Gør det på wifi. Appen selv gemmes automatisk. ${esc(est)}${persisted ? " · Lagring er markeret som varig." : ""}</div></div>
     ${syncConfigured() ? `<h2>Deling med holdet</h2>
     <div class="card"><div id="syncLine">${esc(syncStatusText())}</div>
@@ -880,7 +944,7 @@ async function downloadAll() {
   }
   await Promise.all([worker(), worker(), worker(), worker()]);
   downloading = false;
-  if (btn) { btn.disabled = false; btn.textContent = "Hent alle tegninger (ca. 55 MB)"; }
+  if (btn) { btn.disabled = false; btn.textContent = "Hent alle tegninger (ca. 60 MB)"; }
   toast(failed ? `${failed} tegninger kunne ikke hentes – prøv igen med bedre dækning` : "Alle tegninger er gemt på telefonen", 3500);
 }
 
@@ -909,7 +973,7 @@ function relatedDrawings() {
   const floors = V.ctx.floor ? [V.ctx.floor] : u ? u.f : [];
   const out = [];
   if (u?.img) out.push({ src: u.img, title: `${u.o} ${unitName(u)} – side ${u.id}`, label: `Bolig: ${unitName(u)} (side ${u.id})` });
-  for (const f of floors) for (const p of plansFor(opg, f)) out.push({ ...planDraw(p), label: (p.k === "brand" ? "🔥 " : "") + p.s });
+  for (const f of floors) for (const p of plansFor(opg, f)) out.push({ ...planDraw(p), label: (p.k ? planIcon(p) + " " : "") + p.s });
   const b = OPG.get(opg)?.b || u?.b;
   if (b) out.push({ src: ovImg(b), title: `Oversigtsplan ${b}`, label: `Oversigtsplan bygning ${b}` });
   out.push({ src: SIG_IMG, title: "Signaturforklaring", label: "Signaturforklaring (boliger)" });
@@ -1037,9 +1101,10 @@ function aimAnchor() {
 // Fang streg: find nærmeste streg på tegningen omkring q (billedkoordinater).
 // Returnerer { pt, dir } (dir = stregens retning) eller { pt, dir: null } ved hjørne/kryds, eller null.
 let snapCv = null;
+// Finder stregen tættest på sigtet (uanset tykkelse): nærmeste blæk-pixel, og derefter kun den streg, den pixel hører til.
 function findLine(q) {
   const img = V.img; if (!img) return null;
-  const R = Math.max(4, Math.min(90, 18 / V.s)), PR = 7; // søgeradius og analyse-radius i billedpixels
+  const R = Math.max(3, Math.min(70, 12 / V.s)), PR = 8; // søgeradius (≈12 skærmpixels) og stykke af stregen der analyseres
   const u0 = Math.max(0, Math.floor(q.u - R - PR)), v0 = Math.max(0, Math.floor(q.v - R - PR));
   const u1 = Math.min(img.naturalWidth, Math.ceil(q.u + R + PR)), v1 = Math.min(img.naturalHeight, Math.ceil(q.v + R + PR));
   const w = u1 - u0, h = v1 - v0; if (w < 3 || h < 3) return null;
@@ -1049,24 +1114,28 @@ function findLine(q) {
   cx.fillStyle = "#fff"; cx.fillRect(0, 0, w, h);
   cx.drawImage(img, u0, v0, w, h, 0, 0, w, h);
   const d = cx.getImageData(0, 0, w, h).data;
-  const ink = (x, y) => { const i = (y * w + x) * 4; const m = 255 - Math.min(d[i], d[i + 1], d[i + 2]); return m > 105 ? m : 0; };
-  // nærmeste blæk-pixel
-  let best = null, bd = R * R;
+  const inkA = new Uint8Array(w * h);
+  for (let i = 0, k = 0; k < w * h; i += 4, k++) { const m = 255 - Math.min(d[i], d[i + 1], d[i + 2]); inkA[k] = m > 105 ? m : 0; }
   const qx = q.u - u0 - 0.5, qy = q.v - v0 - 0.5;
+  let best = -1, bd = R * R;
   for (let y = Math.max(0, Math.floor(qy - R)); y <= Math.min(h - 1, Math.ceil(qy + R)); y++)
     for (let x = Math.max(0, Math.floor(qx - R)); x <= Math.min(w - 1, Math.ceil(qx + R)); x++) {
-      const dd = (x - qx) ** 2 + (y - qy) ** 2; if (dd < bd && ink(x, y)) { bd = dd; best = [x, y]; }
+      const dd = (x - qx) ** 2 + (y - qy) ** 2; if (dd < bd && inkA[y * w + x]) { bd = dd; best = y * w + x; }
     }
-  if (!best) return null;
-  // retning af stregen omkring den (hovedakse af blækket)
-  let W = 0, mx = 0, my = 0;
-  const pts = [];
-  for (let y = Math.max(0, best[1] - PR); y <= Math.min(h - 1, best[1] + PR); y++)
-    for (let x = Math.max(0, best[0] - PR); x <= Math.min(w - 1, best[0] + PR); x++) {
-      if ((x - best[0]) ** 2 + (y - best[1]) ** 2 > PR * PR) continue;
-      const k = ink(x, y); if (!k) continue; pts.push([x, y, k]); W += k; mx += x * k; my += y * k;
+  if (best < 0) return null;
+  // Kun den sammenhængende streg omkring den nærmeste pixel (så en tyk streg ved siden af ikke trækker)
+  const bx = best % w, by = (best / w) | 0, seen = new Uint8Array(w * h), st = [best]; seen[best] = 1;
+  let W = 0, mx = 0, my = 0; const pts = [];
+  while (st.length) {
+    const k = st.pop(), x = k % w, y = (k / w) | 0, m = inkA[k];
+    pts.push([x, y, m]); W += m; mx += x * m; my += y * m;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const n = ny * w + nx; if (seen[n] || !inkA[n] || (nx - bx) ** 2 + (ny - by) ** 2 > PR * PR) continue;
+      seen[n] = 1; st.push(n);
     }
-  if (W < 255 * 3) return null;
+  }
+  if (W < 255 * 2) return null;
   mx /= W; my /= W;
   let a = 0, b = 0, c = 0;
   for (const [x, y, k] of pts) { a += k * (x - mx) ** 2; b += k * (x - mx) * (y - my); c += k * (y - my) ** 2; }
@@ -1250,14 +1319,20 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
         // Én finger = sigte. Sigtekorset sidder over fingeren, så man kan se, hvor punktet lander.
         // Starter man tæt på et eksisterende punkt (eller dets sigte), flyttes det punkt med samme afstand til fingeren.
         const near = (q) => { const sp = imgToScreen(q.u, q.v); return Math.min(Math.hypot(sp.x - f.x, sp.y - f.y), Math.hypot(sp.x - f.x, sp.y - (f.y - AIM_OFF))); };
-        let best = -1, bd = 34;
+        let best = -1, bd = 40;
         V.mp.forEach((q, i) => { const d = near(q); if (d < bd) { bd = d; best = i; } });
-        V.snapT = null; V.drag = null; V.aimOff = { dx: 0, dy: -AIM_OFF };
-        // Et punkt flyttes først, når fingeren faktisk trækker – et rent tryk sætter altid et nyt punkt
-        V.grab = best >= 0 ? { i: best, f, off: (() => { const sp = imgToScreen(V.mp[best].u, V.mp[best].v); return { dx: sp.x - f.x, dy: sp.y - f.y }; })() } : null;
+        V.snapT = null; V.drag = null; V.aimOff = { dx: 0, dy: -AIM_OFF }; V.lastF = f;
+        // Et tryk sætter altid et nyt punkt – også tæt på et andet. Hold fingeren stille på/under et punkt i ½ sekund for at flytte det;
+        // punktet hopper så op lige over fingeren, så forstørrelsesglasset aldrig ligger under fingeren.
+        clearTimeout(V.grab?.t);
+        V.grab = best >= 0 ? { i: best, f, t: setTimeout(() => {
+          if (!V.grab || V.pts.size !== 1 || !V.aim) return;
+          V.drag = V.grab.i; V.grab = null; V.snapT = null; haptic();
+          updateAim(V.lastF); updateMeasureUI(); draw();
+        }, 450) } : null;
         updateAim(f);
         draw();
-      } else { V.multi = true; V.aim = null; V.drag = null; V.grab = null; draw(); }
+      } else { clearTimeout(V.grab?.t); V.multi = true; V.aim = null; V.drag = null; V.grab = null; draw(); }
       return;
     }
     if (V.pts.size === 1) {
@@ -1270,8 +1345,8 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
     if (!V.pts.has(e.pointerId) || !V.img) return;
     V.pts.set(e.pointerId, pos(e));
     if (V.measure && V.aim && V.pts.size === 1) {
-      const f = pos(e);
-      if (V.grab && V.drag === null && Math.hypot(f.x - V.grab.f.x, f.y - V.grab.f.y) > 10) { V.drag = V.grab.i; V.aimOff = V.grab.off; V.snapT = null; }
+      const f = pos(e); V.lastF = f;
+      if (V.grab && Math.hypot(f.x - V.grab.f.x, f.y - V.grab.f.y) > 8) { clearTimeout(V.grab.t); V.grab = null; }
       updateAim(f);
       if (V.drag !== null) updateMeasureUI();
       draw(); return;
@@ -1291,6 +1366,7 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
         updateMeasureUI();
       }
       if (V.pts.size === 0) V.multi = false;
+      clearTimeout(V.grab?.t);
       V.aim = null; V.aimPt = null; V.drag = null; V.grab = null; V.snapT = null; V.lineHit = null; V.lineDir = null; draw();
     }
   };
@@ -1314,7 +1390,6 @@ function zoomAt(px, py, ns) { ns = clampScale(ns); const k = ns / V.s; V.tx = px
       if (V.measure) metaGet("measureSnap", true).then((v) => { V.lineSnap = v; updateMeasureUI(); });
       if (V.measure) metaGet("measureRoute", false).then((r) => { if (r !== V.route && !V.mp.length) { V.route = r; updateMeasureUI(); draw(); } });
       updateMeasureUI(); draw();
-      if (V.measure) toast("Sæt fingeren lige under det sted, du vil måle fra – sigtekorset forstørrer, så længe fingeren er nede. Slip for at sætte punktet. Vælg Rute for at måle gennem flere punkter. To fingre flytter og zoomer.", 4500);
     }
     if (a === "mclear") { V.mp = []; updateMeasureUI(); draw(); }
     if (a === "mp2p" || a === "mroute") { const r = a === "mroute"; if (r !== V.route) { V.route = r; V.mp = []; metaSet("measureRoute", r); } updateMeasureUI(); draw(); }

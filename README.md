@@ -70,3 +70,10 @@ Hvis tegningerne bliver revideret: læg de nye PNG-filer i `tegninger/`, og ret 
 - Kældre: under F1/F2/F3 (N911 føringsveje/kraft/svagstrøm og N411 lys, rev. 2) og under J1/J2 (N912 føringsveje/kraft/svagstrøm). Tegningerne ligger i `tegninger/plan/`, og koblingen til bygning og etage står i `SP2_PLANS` i `data.js`.
 - Tegningerne er konverteret til PNG i 250 dpi, så de er skarpe ved zoom.
 - `data.js` kobler bolig, opgang, etage og tegningsside.
+
+## Nyt i 2.0
+- **Forsiden**: materialeliste, opgaver, orienteringsplan over byggepladsen (tryk på en bygning for at gå til opgangen – ved flere opgange vælger man, fx K1-A/K1-B; tryk ved siden af for at åbne hele planen), derefter bygningerne, **🗺️ Terræn, diagrammer og fællesrum** og nederst *Hent alle tegninger*.
+- **Terræn, diagrammer og fællesrum**: orienteringsplan, kabelskabe i terræn, hovedledningsdiagram, beskyttende hovedudligning og fællesarealer.
+- **Fællesrum** ligger også på de etager, hvor de er (👥), fx miljøstationen i F3-A stue.
+- **Boligsiden** viser selve boligtegningen; tryk på den for stor visning med zoom og måling.
+- **Måling**: et tryk sætter altid et nyt punkt (også tæt på et andet). Hold fingeren stille på et punkt i et halvt sekund for at flytte det – det hopper op over fingeren. *Fang streg* tager altid den streg, der er nærmest sigtet.
