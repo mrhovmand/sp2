@@ -214,3 +214,16 @@ progress{width:100%;height:18px}
 .ochip:active{background:#9e0057}
 .opgbox .grid{margin-top:6px}
 .opgimg.dense .ochip{min-width:36px;height:36px;border-radius:18px;font-size:16px;border-width:2px;padding:0 5px}
+/* Opgaver: firkant + tekst hver for sig */
+.trow{display:flex;gap:8px;align-items:stretch}
+.tbox{flex:none;width:68px;min-height:68px;border-radius:14px;border:2px solid var(--line);background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.tbox .box{width:36px;height:36px;border-radius:8px;border:3px solid #333;display:flex;align-items:center;justify-content:center;font-size:26px}
+.trow.done .tbox .box{border-color:var(--muted);background:var(--muted);color:#fff}
+.ttext{flex:1;display:flex;align-items:center;gap:8px;min-height:68px;border-radius:14px;border:2px solid var(--line);background:#fff;padding:8px 12px;text-align:left;font-size:18px;font-weight:600;color:inherit;cursor:pointer}
+.ttext .mattext{flex:1}
+.trow.done .ttext{background:#f3f5f7;color:var(--muted)}
+.trow.done .ttext .mattext{text-decoration:line-through}
+.ttitle{width:100%;box-sizing:border-box;font-size:22px;font-weight:800;font-family:inherit;border:2px solid var(--line);border-radius:12px;padding:10px 12px;margin:4px 0 0;resize:vertical}
+.ttitle.ro{border:0;padding:4px 2px;margin:4px 0 0}
+#tNote{width:100%;box-sizing:border-box;font-size:17px;font-family:inherit;padding:12px;border-radius:12px;border:2px solid var(--line)}
+#tList{width:100%;font-size:17px;padding:12px;border-radius:12px;border:2px solid var(--line)}

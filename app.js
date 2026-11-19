@@ -180,6 +180,7 @@ function parentRoute() {
   if (p[0] === "o" && p[2] === "e") return "/o/" + encodeURIComponent(p[1]);
   if (p[0] === "ov" && p[1]) return "/o/" + encodeURIComponent(p[1]);
   if (p[0] === "rapport" || p[0] === "ov") return "/menu";
+  if (p[0] === "opgaver" && p[1] === "t") return taskBack;
   if (p[0] === "opgaver" && p[1]) return "/opgaver";
   if (p[0] === "terraen") return "/";
   return "/";
@@ -216,7 +217,7 @@ async function render() {
     if (p[0] === "rapport") return viewReport(m);
     if (p[0] === "materialer") return viewMaterials(m);
     if (p[0] === "terraen") return viewSite(m);
-    if (p[0] === "opgaver") return p[1] === "indsaet" ? viewTaskPaste(m) : p[1] ? viewTaskList(m, p[1]) : viewTasks(m);
+    if (p[0] === "opgaver") return p[1] === "t" && p[2] ? viewTask(m, p[2]) : p[1] === "indsaet" ? viewTaskPaste(m) : p[1] ? viewTaskList(m, p[1]) : viewTasks(m);
     return viewHome(m);
   } catch (e) { console.error(e); m.innerHTML = `<div class="card">Der skete en fejl: ${esc(e.message)}</div>`; }
 }
@@ -414,12 +415,14 @@ function tasksCardHtml(store) {
     return `<div class="tline${l.id === me ? " me" : ""}"><span>${esc(l.name)}${l.id === me ? " (dig)" : ""}</span><span class="tn ${n ? "has" : ""}">${n}</span></div>`; }).join("");
   return `<button class="card matcard" data-go="/opgaver"><div class="mattitle"><b>Opgaver</b><span class="count ${total ? "has" : ""}">${total}</span></div><div class="tgrid">${rows}</div></button>`;
 }
+const canEditTask = (x) => isBoss() || (x.by && normName(x.by) === normName(MY_NAME));
 function taskRow(x) {
   const meta = x.done ? `✓ ${esc(x.doneBy || "?")}, ${fmtWhen(x.doneAt)}` : `${x.by ? esc(x.by) + " · " : ""}${fmtWhen(x.created)}`;
-  const canDel = isBoss() || (x.by && normName(x.by) === normName(MY_NAME));
-  return `<div class="matrow">
-    <button class="check ${x.done ? "on done" : ""}" data-ttog="${esc(x.id)}"><span class="box">${x.done ? "✓" : ""}</span><span class="mattext">${esc(x.text)}<span class="small muted">${meta}</span></span></button>
-    ${canDel ? `<button class="btn danger matdel" data-tdel="${esc(x.id)}" aria-label="Slet">✕</button>` : ""}</div>`;
+  const extra = `${(x.note || "").trim() ? " · 📝" : ""}${(x.photos || []).length ? ` · 📷 ${x.photos.length}` : ""}`;
+  // Kun firkanten krydser af – teksten åbner opgaven
+  return `<div class="trow ${x.done ? "done" : ""}">
+    <button class="tbox" data-ttog="${esc(x.id)}" aria-label="${x.done ? "Fjern flueben" : "Kryds af"}"><span class="box">${x.done ? "✓" : ""}</span></button>
+    <button class="ttext" data-topen="${esc(x.id)}"><span class="mattext">${esc(x.text)}<span class="small muted">${meta}${extra}</span></span><span class="chev">›</span></button></div>`;
 }
 function bindTaskRows(m, store, rerender) {
   m.querySelectorAll("[data-ttog]").forEach((b) => b.onclick = async () => {
@@ -427,10 +430,7 @@ function bindTaskRows(m, store, rerender) {
     if (x.done) { x.doneBy = MY_NAME || ""; x.doneAt = nowIso(); } else { x.doneBy = ""; x.doneAt = ""; }
     await saveMat(x); rerender();
   });
-  m.querySelectorAll("[data-tdel]").forEach((b) => b.onclick = async () => {
-    const x = store[b.dataset.tdel]; if (!(await confirmBox(`Slet opgaven "${x.text}"?`, "Slet"))) return;
-    x.deleted = true; await saveMat(x); rerender();
-  });
+  m.querySelectorAll("[data-topen]").forEach((b) => b.onclick = () => { taskBack = location.hash.slice(1) || "/opgaver"; go("/opgaver/t/" + encodeURIComponent(b.dataset.topen)); });
 }
 async function viewTasks(m) {
   const my = renderSeq;
@@ -490,6 +490,74 @@ async function viewTaskList(m, list) {
     if (!(await confirmBox(`Fjern ${name}? ${open.length ? `De ${open.length} åbne opgaver flyttes til Fælles.` : ""}`, "Fjern"))) return;
     for (const x of open) { x.list = SHARED; await saveMat(x); }
     await saveMat({ ...(store[list] || { id: list, kind: "person", name, created: nowIso() }), deleted: true }); go("/opgaver");
+  };
+}
+/* ---------- Én opgave: overskrift + evt. beskrivelse og billeder ---------- */
+let taskBack = "/opgaver";
+async function viewTask(m, id) {
+  const my = renderSeq;
+  const store = await metaGet("materials", {});
+  if (my !== renderSeq) return;
+  const x = store[id];
+  if (!x || x.deleted) { setTop("Opgave"); m.innerHTML = `<p class="muted">Opgaven findes ikke længere.</p>`; return; }
+  x.photos = x.photos || [];
+  const edit = canEditTask(x);
+  setTop("Opgave", listName(store, x.list));
+  const lists = [...peopleOf(store).map((p) => ({ id: p.id, name: p.name })), { id: SHARED, name: "Fælles" }];
+  m.innerHTML = `
+    ${edit ? `<textarea id="tTitle" class="ttitle" rows="2">${esc(x.text)}</textarea>` : `<h1 class="ttitle ro">${esc(x.text)}</h1>`}
+    <div class="small muted" style="margin:2px 2px 10px">${x.by ? `Lagt ind af ${esc(x.by)} · ` : ""}${fmtWhen(x.created)}</div>
+    <button class="check ${x.done ? "on done" : ""}" id="tDone"><span class="box">${x.done ? "✓" : ""}</span><span>${x.done ? `Udført – ${esc(x.doneBy || "?")}, ${fmtWhen(x.doneAt)}` : "Ikke udført – tryk når den er lavet"}</span></button>
+    <label class="lbl" for="tNote">Beskrivelse / mere info</label>
+    <textarea id="tNote" rows="4" placeholder="Fx hvor, hvad der skal bruges, hvem man skal tale med …">${esc(x.note || "")}</textarea>
+    <label class="lbl">Billeder (${x.photos.length})</label>
+    <div class="thumbs" id="tThumbs"></div>
+    <div class="btnrow"><button class="btn yellow" id="tCam">📷 Tag billede</button><button class="btn" id="tPick">🖼️ Vælg billede</button></div>
+    <input type="file" id="tFileCam" accept="image/*" capture="environment" hidden><input type="file" id="tFilePick" accept="image/*" hidden>
+    <div id="tBusy" class="small" hidden><span class="spinner"></span> Komprimerer billede …</div>
+    ${isBoss() ? `<label class="lbl" for="tList">Liste</label><select id="tList">${lists.map((l) => `<option value="${esc(l.id)}"${l.id === x.list ? " selected" : ""}>${esc(l.name)}</option>`).join("")}</select>` : ""}
+    <div class="btnrow" style="margin-top:18px"><button class="btn primary" id="tBack">Færdig</button></div>
+    ${edit ? `<div class="btnrow"><button class="btn danger small" id="tDel">Slet opgaven</button></div>` : ""}
+    <p class="small muted">Gemmes automatisk${syncConfigured() ? " og deles med holdet" : ""}.</p>`;
+  let t = null;
+  const save = () => { clearTimeout(t); return saveMat(x); };
+  const saveSoon = () => { clearTimeout(t); t = setTimeout(save, 700); };
+  const ti = $("#tTitle"); if (ti) ti.oninput = () => { const v = ti.value.replace(/\s+/g, " ").trim(); if (v) { x.text = v; saveSoon(); } };
+  $("#tNote").oninput = (e) => { x.note = e.target.value; saveSoon(); };
+  $("#tDone").onclick = async () => {
+    x.done = !x.done; if (x.done) { x.doneBy = MY_NAME || ""; x.doneAt = nowIso(); } else { x.doneBy = ""; x.doneAt = ""; }
+    await save(); viewTask(m, id);
+  };
+  const tl = $("#tList"); if (tl) tl.onchange = async () => { x.list = tl.value; await save(); setTop("Opgave", listName(store, x.list)); toast(`Flyttet til ${listName(store, x.list)}`); };
+  const thumbs = async () => {
+    const box = $("#tThumbs"); if (!box) return; box.innerHTML = "";
+    box.previousElementSibling.textContent = `Billeder (${x.photos.length})`;
+    for (const pid of x.photos) {
+      const p = await getPhoto(pid); const b = document.createElement("button");
+      if (!p) { b.innerHTML = `<span class="small muted">Billedet hentes, når der er dækning</span>`; box.appendChild(b); continue; }
+      const url = URL.createObjectURL(p.blob); b.innerHTML = `<img src="${url}" alt="Billede">`;
+      b.onclick = () => openPhoto(pid, url, async () => { x.photos = x.photos.filter((q) => q !== pid); await dbDel("photos", pid); await save(); thumbs(); });
+      box.appendChild(b);
+    }
+  };
+  thumbs();
+  const addFile = async (e) => {
+    const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+    $("#tBusy").hidden = false;
+    try {
+      const blob = await compressImage(f), pid = uid();
+      await dbPut("photos", { id: pid, reg: "task:" + x.id, blob, created: nowIso() });
+      x.photos.push(pid); await save(); await thumbs();
+      toast(`Billede gemt (${Math.round(blob.size / 1024)} kB)`);
+    } catch (err) { console.error(err); toast("Kunne ikke gemme billedet: " + err.message, 4000); }
+    $("#tBusy").hidden = true;
+  };
+  $("#tCam").onclick = () => $("#tFileCam").click(); $("#tPick").onclick = () => $("#tFilePick").click();
+  $("#tFileCam").onchange = addFile; $("#tFilePick").onchange = addFile;
+  $("#tBack").onclick = async () => { await save(); location.replace("#" + taskBack); };
+  const del = $("#tDel"); if (del) del.onclick = async () => {
+    if (!(await confirmBox(`Slet opgaven "${x.text}"?`, "Slet"))) return;
+    x.deleted = true; await save(); location.replace("#" + taskBack);
   };
 }
 /* Indsæt opgaver: linjer som "Tommy: hjælp Daniel i kælderen". En linje med kun "Tommy:" gælder for linjerne under. */
@@ -815,11 +883,12 @@ async function renderThumbs() {
   }
   const l = box.previousElementSibling; if (l) l.textContent = `Billeder (${draft.photos.length})`;
 }
-function openPhoto(pid, url) {
+function openPhoto(pid, url, onDelete) {
   const v = $("#photoView"); $("#pvImg").src = url; v.hidden = false;
   $("#pvClose").onclick = () => (v.hidden = true);
   $("#pvDelete").onclick = async () => {
     if (!(await confirmBox("Slet dette billede?", "Slet billede"))) return;
+    if (onDelete) { await onDelete(); v.hidden = true; return; }
     draft.photos = draft.photos.filter((x) => x !== pid);
     await dbDel("photos", pid); await saveDraft(); v.hidden = true; renderThumbs();
   };
