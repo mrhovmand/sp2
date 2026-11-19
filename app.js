@@ -441,10 +441,11 @@ async function viewTasks(m) {
   const me = personId(MY_NAME || "");
   let h = isBoss() ? `<div class="btnrow"><button class="btn primary" id="tPaste">📋 Indsæt opgaver</button></div>` : "";
   for (const l of lists) {
-    const open = openTasks(store, l.id), done = tasksIn(store, l.id).filter((x) => x.done);
+    // Afkrydsede opgaver bliver stående på deres plads (overstreget), til de ryddes
+    const all = tasksIn(store, l.id).sort((a, b) => a.created.localeCompare(b.created)), done = all.filter((x) => x.done).length;
     h += `<div class="tsec${l.id === me ? " me" : ""}"><button class="thead" data-go="/opgaver/${encodeURIComponent(l.id)}">
-        <b>${esc(l.name)}${l.id === me ? " (dig)" : ""}</b><span class="small muted">${done.length ? `${done.length} udført · ` : ""}åbn ›</span></button>
-      <div class="list">${open.map(taskRow).join("") || `<p class="muted small" style="margin:4px 2px">Ingen åbne opgaver.</p>`}</div></div>`;
+        <b>${esc(l.name)}${l.id === me ? " (dig)" : ""}</b><span class="small muted">${all.length - done} åbne${done ? ` · ${done} udført` : ""} · åbn ›</span></button>
+      <div class="list">${all.map(taskRow).join("") || `<p class="muted small" style="margin:4px 2px">Ingen opgaver.</p>`}</div></div>`;
   }
   if (isBoss()) h += `<div class="btnrow"><button class="btn small" id="tPerson">+ Tilføj person</button></div>`;
   if (syncConfigured()) h += `<p class="small muted" id="syncLine">${esc(syncStatusText())}</p>`;
@@ -468,10 +469,9 @@ async function viewTaskList(m, list) {
   const add = canAddTo(list);
   m.innerHTML = `${add ? `<div class="matadd"><input type="text" id="tText" placeholder="Ny opgave …" enterkeyhint="done" autocomplete="off">
       <button class="btn primary" id="tAdd">Tilføj</button></div>` : `<p class="small muted">Morten lægger opgaverne her. Du kan krydse af, når de er udført.</p>`}
-    <h2>Åbne (${open.length})</h2>
-    <div class="list">${open.map(taskRow).join("") || `<p class="muted">Ingen åbne opgaver.</p>`}</div>
-    ${done.length ? `<h2>Udført (${done.length})</h2><div class="list">${done.map(taskRow).join("")}</div>
-      ${isBoss() ? `<div class="btnrow"><button class="btn small" id="tClear">Ryd udførte</button></div>` : ""}` : ""}
+    <h2>Opgaver (${open.length} åbne${done.length ? `, ${done.length} udført` : ""})</h2>
+    <div class="list">${tasksIn(store, list).sort((a, b) => a.created.localeCompare(b.created)).map(taskRow).join("") || `<p class="muted">Ingen opgaver.</p>`}</div>
+    ${done.length && isBoss() ? `<div class="btnrow"><button class="btn small" id="tClear">Ryd udførte (${done.length})</button></div>` : ""}
     ${isBoss() && list !== SHARED && !DEFAULT_PEOPLE.some((n) => personId(n) === list) ? `<div class="btnrow"><button class="btn small danger" id="tRmPerson">Fjern ${esc(name)} fra opgaver</button></div>` : ""}
     ${syncConfigured() ? `<p class="small muted" id="syncLine">${esc(syncStatusText())}</p>` : ""}`;
   const rer = () => viewTaskList(m, list);
