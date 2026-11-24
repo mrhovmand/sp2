@@ -354,7 +354,7 @@ async function viewDalux(m) {
   const saved = await metaGet("daluxOpgs", null);
   if (my !== renderSeq) return;
   const cnt = {}; for (const r of REGS.values()) if (daluxRelevant(r)) cnt[r.opg] = (cnt[r.opg] || 0) + 1;
-  let h = `<div class="card small">Pakken er en zip-fil med en mappe pr. opgang og en undermappe pr. bolig. Hver bolig har sine billeder (navngivet efter boligen) og en tekstfil med registreringerne. Kun registreringer med afvigelse eller billeder kommer med.</div>
+  let h = `<div class="card small">Pakken er en zip-fil med en mappe pr. opgang og en undermappe pr. bolig. Hver bolig har sine billeder (navngivet efter boligen) og en Dalux-tekstfil med overskrift og tekst klar til at kopiere – én blok pr. slags afvigelse (indstøbningsdåse, rør/udsparing, andet). Kun registreringer med afvigelse eller billeder kommer med.</div>
     <div class="btnrow"><button class="btn small" id="dAll">Vælg alle med registreringer</button><button class="btn small" id="dNone">Fravælg alle</button></div>`;
   for (const b of BUILDINGS) {
     const ops = [...OPG.values()].filter((o) => o.b === b);
@@ -392,7 +392,11 @@ async function buildDalux(opgs, progress) {
       const regs = regsOf(unitId), rel = regs.filter(daluxRelevant); if (!rel.length) continue;
       const un = unitName(u), folder = `${root}/${fileSafe(opg)}/${fileSafe(`${u.f[0]} – ${un}${u.real ? ` (side ${u.id})` : ""}`)}`;
       const base = `${nameSafe(opg)}_${nameSafe(un)}`;
-      let txt = `${opg} · ${un}${u.real ? ` · tegning side ${u.id}` : ""} · ${u.f.join("–")}\r\n${"=".repeat(50)}\r\n`;
+      // Dalux-blokke: én pr. slags afvigelse (dåse / rør / andet) med overskrift og tekst klar til at kopiere
+      const KINDS = [["devBox", "devBoxNote", "Indstøbningsdåse"], ["devPipe", "devPipeNote", "Rør/udsparing"], ["devOther", "devOtherNote", "Andet"]];
+      const sentence = (t) => { t = String(t || "").trim().replace(/\s+/g, " "); if (!t) return ""; t = t[0].toUpperCase() + t.slice(1); return /[.!?]$/.test(t) ? t : t + "."; };
+      const blocks = KINDS.map(([k, nk, label]) => ({ k, nk, label, lines: [], pics: [] }));
+      const docPics = [];
       let pn = 0;
       for (const r of rel) {
         const i = regs.indexOf(r) + 1; nRegs++;
@@ -400,15 +404,28 @@ async function buildDalux(opgs, progress) {
         const names = [];
         for (const pid of r.photos || []) {
           const p = await getPhoto(pid);
-          if (!p) { missing++; names.push("(billede ikke hentet – mangler dækning)"); continue; }
+          if (!p) { missing++; continue; }
           pn++; nPh++; const fn = `${base}_${pn}.jpg`; names.push(fn);
           files.push({ name: `${folder}/${fn}`, data: new Uint8Array(await p.blob.arrayBuffer()) });
         }
-        const devs = [r.devBox ? `Afvigelse dåse${r.devBoxNote ? ": " + r.devBoxNote : ""}` : "", r.devPipe ? `Afvigelse rør/udsparing${r.devPipeNote ? ": " + r.devPipeNote : ""}` : "", r.devOther ? `Anden afvigelse${r.devOtherNote ? ": " + r.devOtherNote : ""}` : ""].filter(Boolean);
-        txt += `\r\nRegistrering ${i} – ${typeLabel(r)}\r\nRum: ${r.room || "ikke angivet"}\r\n${devs.length ? devs.map((d) => "• " + d).join("\r\n") : "Ingen afvigelse (dokumentation)"}\r\nBilleder: ${names.length ? names.join(", ") : "ingen"}\r\nRegistreret af ${r.by || "?"} · ${fmtDate(r.created)}\r\n`;
+        let anyDev = false;
+        for (const bl of blocks) if (r[bl.k]) {
+          anyDev = true;
+          bl.lines.push(`${sentence(r.room || "Bolig").replace(/\.$/, "")}: ${sentence(r[bl.nk]) || sentence(`${typeLabel(r)} – afvigelse`)}`);
+          bl.pics.push(...names);
+        }
+        if (!anyDev) docPics.push(...names.map((n) => `${n} (${r.room || "bolig"} – ${typeLabel(r)})`));
         rows.push([opg, u.f.join("–"), un, u.real ? u.id : "", i, typeLabel(r), r.room, r.devBox ? r.devBoxNote || "ja" : "", r.devPipe ? r.devPipeNote || "ja" : "", r.devOther ? r.devOtherNote || "ja" : "", names.join(", "), folder.slice(root.length + 1), r.by || "", fmtDate(r.created)]);
       }
-      files.push({ name: `${folder}/${base}_registreringer.txt`, data: enc.encode("﻿" + txt) });
+      let txt = `DALUX – ${opg} · ${un}${u.real ? ` (tegning side ${u.id}, ${u.f.join("–")})` : ` (${u.f.join("–")})`}\r\n`;
+      let nb = 0;
+      for (const bl of blocks) if (bl.lines.length) {
+        nb++;
+        txt += `\r\n────────── ${nb} ──────────\r\nOverskrift:\r\n${opg}, ${un} – ${bl.label}\r\n\r\nTekst:\r\n${bl.lines.join("\r\n")}\r\n`;
+        if (bl.pics.length) txt += `\r\nBilleder: ${[...new Set(bl.pics)].join(", ")}\r\n`;
+      }
+      if (docPics.length) txt += `\r\n────────── Øvrige billeder (ingen afvigelse) ──────────\r\n${docPics.join("\r\n")}\r\n`;
+      files.push({ name: `${folder}/${base}_Dalux.txt`, data: enc.encode("﻿" + txt) });
     }
   }
   if (!nRegs) return toast("Der er ingen registreringer med afvigelse eller billeder i de valgte opgange");
