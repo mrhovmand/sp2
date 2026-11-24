@@ -238,5 +238,5 @@ progress{width:100%;height:18px}
 .xtable tfoot td{border-bottom:0;background:#f3f5f7}
 #xDesc,#xMats{width:100%;box-sizing:border-box;font-size:17px;font-family:inherit;padding:12px;border-radius:12px;border:2px solid var(--line)}
 /* Byggerækkefølge på orienteringsplanen */
-.oord{position:absolute;right:-6px;top:-7px;min-width:17px;height:17px;padding:0 3px;box-sizing:border-box;border-radius:9px;background:#d4202a;color:#fff;font-style:normal;font-size:11px;font-weight:800;line-height:17px;text-align:center;border:1.5px solid #fff;box-shadow:0 1px 2px rgba(0,0,0,.3);pointer-events:none}
-.oord.inl{position:static;display:inline-block;vertical-align:1px;margin:0 1px}
+.oord{position:absolute;right:-5px;top:-6px;width:14px;height:14px;border-radius:50%;background:rgba(210,30,40,.72);color:#fff;font-style:normal;font-size:9.5px;font-weight:800;line-height:1;display:flex;align-items:center;justify-content:center;pointer-events:none}
+.oord.inl{position:static;display:inline-flex;vertical-align:-2px;margin:0 1px}
