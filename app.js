@@ -147,6 +147,17 @@ function normReg(r) {
   return r;
 }
 const isDev = (r) => r.devBox || r.devPipe || r.devOther;
+// Dalux-markering: gemmer et "fingeraftryk" af indholdet, så vi kan se om registreringen er ændret bagefter
+const regSig = (r) => JSON.stringify([r.types, r.typeOther, r.room, !!r.devBox, r.devBoxNote, !!r.devPipe, r.devPipeNote, !!r.devOther, r.devOtherNote, r.photos]);
+const daluxState = (r) => !r.dalux ? "new" : r.dalux.sig === regSig(r) ? "done" : "changed";
+const daluxBadge = (r) => { const st = daluxState(r); return st === "done" ? `<span class="badge b-dlx">✓ I Dalux</span>` : st === "changed" ? `<span class="badge b-dlxc">⚠ Ændret efter Dalux</span>` : ""; };
+async function setDalux(r, on) {
+  r.dalux = on ? { at: nowIso(), by: MY_NAME || "", sig: regSig(r) } : null;
+  r.updated = nowIso(); r.dirty = true;
+  if (draft && draft.id === r.id) draft.dalux = r.dalux;
+  const copy = { ...r, photos: [...(r.photos || [])], types: [...(r.types || [])] };
+  REGS.set(copy.id, copy); await dbPut("regs", copy);
+}
 const CHECKS = { devBox: "Afvigelse dåse", devPipe: "Afvigelse rør/udsparing", devOther: "Anden afvigelse" };
 function stats(regs) { return { n: regs.length, dev: regs.filter(isDev).length }; }
 function statsUnits(units) {
@@ -351,9 +362,15 @@ const daluxRelevant = (r) => r.devBox || r.devPipe || r.devOther || (r.photos ||
 async function viewDalux(m) {
   const my = renderSeq;
   setTop("Dalux-pakke", "Vælg opgange");
-  const saved = await metaGet("daluxOpgs", null);
+  const saved = await metaGet("daluxOpgs", null), inclDone = await metaGet("daluxInclDone", false);
   if (my !== renderSeq) return;
-  const cnt = {}; for (const r of REGS.values()) if (daluxRelevant(r)) cnt[r.opg] = (cnt[r.opg] || 0) + 1;
+  const cnt = {}, chg = {}, done = {};
+  for (const r of REGS.values()) if (daluxRelevant(r)) {
+    const st = daluxState(r);
+    if (st === "done") done[r.opg] = (done[r.opg] || 0) + 1; else cnt[r.opg] = (cnt[r.opg] || 0) + 1;
+    if (st === "changed") chg[r.opg] = (chg[r.opg] || 0) + 1;
+    if (inclDone && st === "done") cnt[r.opg] = (cnt[r.opg] || 0) + 1;
+  }
   let h = `<div class="card small">Pakken er en zip-fil med en mappe pr. opgang og en undermappe pr. bolig. Hver bolig har sine billeder (navngivet efter boligen) og en Dalux-tekstfil med overskrift og tekst klar til at kopiere – én blok pr. slags afvigelse (indstøbningsdåse, rør/udsparing, andet). Kun registreringer med afvigelse eller billeder kommer med.</div>
     <div class="btnrow"><button class="btn small" id="dAll">Vælg alle med registreringer</button><button class="btn small" id="dNone">Fravælg alle</button></div>`;
   for (const b of BUILDINGS) {
@@ -361,26 +378,32 @@ async function viewDalux(m) {
     h += `<h2>Bygning ${esc(b)}</h2><div class="grid">`;
     for (const o of ops) {
       const n = cnt[o.id] || 0, on = saved ? saved.includes(o.id) : false;
-      h += `<button class="tile dsel ${on ? "on" : ""}" data-dopg="${esc(o.id)}"${n ? "" : " disabled"}><b>${on ? "☑" : "☐"} ${esc(o.id)}</b><span class="sub">${n ? `${n} registrering${n > 1 ? "er" : ""}` : "Intet at sende"}</span></button>`;
+      const nn = n - (inclDone ? done[o.id] || 0 : 0);
+      h += `<button class="tile dsel ${on ? "on" : ""}" data-dopg="${esc(o.id)}"${n ? "" : " disabled"}><b>${on ? "☑" : "☐"} ${esc(o.id)}</b>
+        <span class="sub">${nn ? `${nn} ny${nn > 1 ? "e" : ""}${chg[o.id] ? ` (${chg[o.id]} ændret)` : ""}` : n ? "Ingen nye" : "Intet nyt at sende"}</span>${done[o.id] ? `<span class="sub">✓ ${done[o.id]} i Dalux</span>` : ""}</button>`;
     }
     h += `</div>`;
   }
-  h += `<div class="btnrow" style="margin-top:16px"><button class="btn primary" id="dGo">📦 Hent Dalux-pakke</button></div><div class="small" id="dMsg"></div>`;
+  h += `<div class="list" style="margin-top:14px"><button class="check ${inclDone ? "on" : ""}" id="dIncl"><span class="box">${inclDone ? "✓" : ""}</span><span>Medtag også dem, der allerede er oprettet i Dalux</span></button></div>
+    <div class="btnrow" style="margin-top:12px"><button class="btn primary" id="dGo">📦 Hent Dalux-pakke</button></div><div class="small" id="dMsg"></div>`;
   m.innerHTML = h;
   const sel = () => [...m.querySelectorAll(".dsel.on")].map((b) => b.dataset.dopg);
   const paint = (b, on) => { b.classList.toggle("on", on); b.querySelector("b").textContent = `${on ? "☑" : "☐"} ${b.dataset.dopg}`; };
   m.querySelectorAll(".dsel").forEach((b) => b.onclick = () => { paint(b, !b.classList.contains("on")); metaSet("daluxOpgs", sel()); });
   $("#dAll").onclick = () => { m.querySelectorAll(".dsel:not([disabled])").forEach((b) => paint(b, true)); metaSet("daluxOpgs", sel()); };
   $("#dNone").onclick = () => { m.querySelectorAll(".dsel").forEach((b) => paint(b, false)); metaSet("daluxOpgs", sel()); };
+  $("#dIncl").onclick = async () => { await metaSet("daluxInclDone", !inclDone); viewDalux(m); };
   $("#dGo").onclick = async () => {
     const opgs = sel(); if (!opgs.length) return toast("Sæt flueben ved mindst én opgang");
     const btn = $("#dGo"); btn.disabled = true; $("#dMsg").innerHTML = `<span class="spinner"></span> Pakker …`;
-    try { await buildDalux(opgs, (t) => { const e = $("#dMsg"); if (e) e.innerHTML = `<span class="spinner"></span> ${esc(t)}`; }); }
+    try { await buildDalux(opgs, inclDone, (t) => { const e = $("#dMsg"); if (e) e.innerHTML = `<span class="spinner"></span> ${esc(t)}`; }); }
     catch (e) { console.error(e); toast("Pakken kunne ikke laves: " + e.message, 4000); }
     btn.disabled = false; const e = $("#dMsg"); if (e) e.textContent = "";
   };
 }
-async function buildDalux(opgs, progress) {
+async function buildDalux(opgs, inclDone, progress) {
+  const take = (r) => daluxRelevant(r) && (inclDone || daluxState(r) !== "done");
+  const packed = [];
   const enc = new TextEncoder(), files = [], root = `Dalux SP2 ${today()}`;
   const q = (v) => { v = String(v ?? ""); return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
   const rows = [["Opgang", "Etage", "Bolig", "Tegning side", "Registrering nr.", "Type", "Rum", "Afvigelse dåse", "Afvigelse rør/udsparing", "Anden afvigelse", "Billeder", "Mappe", "Registreret af", "Dato"]];
@@ -389,7 +412,8 @@ async function buildDalux(opgs, progress) {
     const units = [...new Set(allRegsSorted(opg).map((r) => r.unit))];
     for (const unitId of units) {
       const u = UNITS.get(unitId); if (!u) continue;
-      const regs = regsOf(unitId), rel = regs.filter(daluxRelevant); if (!rel.length) continue;
+      const regs = regsOf(unitId), rel = regs.filter(take); if (!rel.length) continue;
+      packed.push(...rel);
       const un = unitName(u), folder = `${root}/${fileSafe(opg)}/${fileSafe(`${u.f[0]} – ${un}${u.real ? ` (side ${u.id})` : ""}`)}`;
       const base = `${nameSafe(opg)}_${nameSafe(un)}`;
       // Dalux-blokke: én pr. slags afvigelse (dåse / rør / andet) med overskrift og tekst klar til at kopiere
@@ -418,6 +442,8 @@ async function buildDalux(opgs, progress) {
         rows.push([opg, u.f.join("–"), un, u.real ? u.id : "", i, typeLabel(r), r.room, r.devBox ? r.devBoxNote || "ja" : "", r.devPipe ? r.devPipeNote || "ja" : "", r.devOther ? r.devOtherNote || "ja" : "", names.join(", "), folder.slice(root.length + 1), r.by || "", fmtDate(r.created)]);
       }
       let txt = `DALUX – ${opg} · ${un}${u.real ? ` (tegning side ${u.id}, ${u.f.join("–")})` : ` (${u.f.join("–")})`}\r\n`;
+      if (rel.some((r) => daluxState(r) === "changed")) txt += `\r\nOBS: Mindst én registrering er ændret, efter den blev oprettet i Dalux – ret den eksisterende mangel i stedet for at oprette en ny.\r\n`;
+      if (rel.some((r) => daluxState(r) === "done")) txt += `\r\n(Indeholder også registreringer, der allerede er oprettet i Dalux.)\r\n`;
       let nb = 0;
       for (const bl of blocks) if (bl.lines.length) {
         nb++;
@@ -428,12 +454,20 @@ async function buildDalux(opgs, progress) {
       files.push({ name: `${folder}/${base}_Dalux.txt`, data: enc.encode("﻿" + txt) });
     }
   }
-  if (!nRegs) return toast("Der er ingen registreringer med afvigelse eller billeder i de valgte opgange");
+  if (!nRegs) return toast(inclDone ? "Der er ingen registreringer med afvigelse eller billeder i de valgte opgange" : "Der er ikke noget nyt til Dalux i de valgte opgange");
   files.unshift({ name: `${root}/oversigt.csv`, data: enc.encode("﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n")) });
   progress("Laver zip-fil …");
   const blob = await zipBlob(files);
-  await offerFile(blob, `Dalux-SP2-${opgs.length === 1 ? nameSafe(opgs[0]) + "-" : ""}${today()}.zip`,
+  const ok = await offerFile(blob, `Dalux-SP2-${opgs.length === 1 ? nameSafe(opgs[0]) + "-" : ""}${today()}.zip`,
     `Dalux-pakke med ${nRegs} registreringer og ${nPh} billeder er klar.${missing ? ` ${missing} billede(r) kunne ikke hentes uden dækning.` : ""}`);
+  if (!ok) return;
+  const toMark = packed.filter((r) => daluxState(r) !== "done");
+  if (!toMark.length) return;
+  const v = await dialog(`Når de er lagt i Dalux: markér de ${toMark.length} registreringer som oprettet, så de ikke kommer med igen næste gang?`,
+    [{ label: "Ja, markér dem", value: true, cls: "primary" }, { label: "Ikke endnu", value: null }]);
+  if (!v) return;
+  for (const r of toMark) await setDalux(r, true);
+  syncSoon(); toast(`${toMark.length} markeret som oprettet i Dalux`); render();
 }
 
 /* ---------------- Ekstraarbejde (arbejdssedler) ----------------
@@ -1005,7 +1039,7 @@ async function viewUnit(m, unitId) {
     h += `<button class="row" data-go="/d/${encodeURIComponent(r.id)}"><div class="main">
       <div class="name">Registrering ${i + 1} · ${esc(typeLabel(r))}</div>
       <div class="sub">${esc(r.room || "Intet rum angivet")} · ${r.photos.length} billede${r.photos.length === 1 ? "" : "r"}${r.by ? ` · ${esc(r.by)}` : ""}</div>
-      <div>${r.devBox ? `<span class="badge b-afv">Afv. dåse</span>` : `<span class="badge b-ok">Dåse OK</span>`}${r.devPipe ? `<span class="badge b-afv">Afv. rør/udsp.</span>` : `<span class="badge b-ok">Rør/udsp. OK</span>`}${r.devOther ? `<span class="badge b-afv">Anden afv.</span>` : ""}</div>
+      <div>${r.devBox ? `<span class="badge b-afv">Afv. dåse</span>` : `<span class="badge b-ok">Dåse OK</span>`}${r.devPipe ? `<span class="badge b-afv">Afv. rør/udsp.</span>` : `<span class="badge b-ok">Rør/udsp. OK</span>`}${r.devOther ? `<span class="badge b-afv">Anden afv.</span>` : ""}${daluxBadge(r)}</div>
       </div><span class="chev">›</span></button>`;
   });
   h += `</div>`;
@@ -1086,7 +1120,9 @@ async function viewReg(m, idOrNew, unitArg) {
   const idx = regsOf(u.id).findIndex((x) => x.id === r.id);
   setTop(`${u.o} · ${unitName(u)}`, idx >= 0 ? `Registrering ${idx + 1}` : "Ny registrering");
   const rooms = [...new Set(["Alle rum", ...u.r, ...DEFAULT_ROOMS, ...regsOf(u.id).map((x) => x.room).filter(Boolean)])];
+  const dst = r.saved ? daluxState(r) : "new";
   m.innerHTML = `
+    ${dst !== "new" ? `<button class="dlxbar ${dst}" id="bDalux">${dst === "done" ? `✓ Oprettet i Dalux ${fmtWhen(r.dalux.at)}${r.dalux.by ? " af " + esc(r.dalux.by) : ""}` : `⚠ Ændret efter den blev oprettet i Dalux – ret manglen dér`}<span class="small"> · tryk for at ændre</span></button>` : ""}
     <label class="lbl">Type <span class="small muted">(vælg en eller flere)</span></label>
     <div class="types">${TYPES.map((t) => `<button class="typebtn ${r.types.includes(t) ? "on" : ""}" data-type="${t}">${t}</button>`).join("")}</div>
     <div id="otherBox" ${r.types.includes("Andet") ? "" : "hidden"}><label class="lbl" for="fOther">Hvilken type?</label>
@@ -1133,6 +1169,12 @@ async function viewReg(m, idOrNew, unitArg) {
   $("#fBoxNote").oninput = (e) => { r.devBoxNote = e.target.value; saveSoon(); };
   $("#fPipeNote").oninput = (e) => { r.devPipeNote = e.target.value; saveSoon(); };
   $("#fOtherNote").oninput = (e) => { r.devOtherNote = e.target.value; saveSoon(); };
+  const bd = $("#bDalux"); if (bd) bd.onclick = async () => {
+    const v = await dialog(daluxState(r) === "changed" ? "Registreringen er ændret, efter den blev oprettet i Dalux." : "Registreringen er markeret som oprettet i Dalux.",
+      [...(daluxState(r) === "changed" ? [{ label: "Er rettet i Dalux – markér igen", value: "re", cls: "primary" }] : []), { label: "Fjern Dalux-markering", value: "off" }, { label: "Annullér", value: null }]);
+    if (!v) return;
+    await saveDraft(); await setDalux(REGS.get(r.id), v === "re"); syncSoon(); render();
+  };
   $("#bPhoto").onclick = () => $("#fFile").click();
   $("#fFile").onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = "";

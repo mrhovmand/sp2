@@ -82,3 +82,7 @@ Hvis tegningerne bliver revideret: læg de nye PNG-filer i `tegninger/`, og ret 
 - Appen hedder nu **Stejlepladsen etape 2** (på hjemmeskærmen "Stejlepladsen"). Ikonet beholder det gamle navn, til appen lægges på hjemmeskærmen igen.
 - **Menu → 📦 Dalux-pakke**: sæt flueben ved opgangene og hent en zip-fil med én mappe pr. opgang og én undermappe pr. bolig. Billederne hedder fx `K1-B_1-th_1.jpg`, og hver bolig har en tekstfil med registreringerne. Kun registreringer med afvigelse eller billeder kommer med. Øverst ligger `oversigt.csv` til Excel.
 - **Ekstraarbejde** på forsiden: alle kan oprette en seddel (nummereres automatisk fra 1) med overskrift, dato/uge, beskrivelse, materialer, timer og billeder. Den der oprettede og Morten kan rette; kun Morten kan slette. *Kopiér som tekst* giver en færdig tekst til mail. **Oversigt (timer)** er låst med en ekstra kode, som Morten vælger første gang; herfra kan den hentes som Excel (CSV).
+
+## Nyt i 2.5 – styr på hvad der er i Dalux
+- Når Dalux-pakken er hentet, spørger appen, om registreringerne skal markeres som oprettet i Dalux. Markerede kommer ikke med i næste pakke (medmindre man sætter flueben ved *Medtag også dem, der allerede er oprettet i Dalux*).
+- På boligsiden står **✓ I Dalux** eller **⚠ Ændret efter Dalux** (indholdet er rettet, efter den blev oprettet – ret manglen i Dalux). Inde i registreringen kan markeringen fjernes eller sættes igen.
