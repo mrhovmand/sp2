@@ -227,3 +227,13 @@ progress{width:100%;height:18px}
 .ttitle.ro{border:0;padding:4px 2px;margin:4px 0 0}
 #tNote{width:100%;box-sizing:border-box;font-size:17px;font-family:inherit;padding:12px;border-radius:12px;border:2px solid var(--line)}
 #tList{width:100%;font-size:17px;padding:12px;border-radius:12px;border:2px solid var(--line)}
+/* Dalux-valg og ekstraarbejde */
+.dsel.on{border-color:var(--blue);background:#e8f0fb}
+.dsel[disabled]{opacity:.45}
+.xtable{overflow-x:auto;background:#fff;border-radius:12px;border:1px solid var(--line)}
+.xtable table{width:100%;border-collapse:collapse;font-size:15px}
+.xtable th,.xtable td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.xtable td.r,.xtable th.r{text-align:right;white-space:nowrap}
+.xtable tbody tr{cursor:pointer}
+.xtable tfoot td{border-bottom:0;background:#f3f5f7}
+#xDesc,#xMats{width:100%;box-sizing:border-box;font-size:17px;font-family:inherit;padding:12px;border-radius:12px;border:2px solid var(--line)}

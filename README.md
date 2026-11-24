@@ -1,4 +1,4 @@
-# SP2 Dåsekontrol
+# Stejlepladsen etape 2
 
 Web-app (PWA) til kontrol af indstøbte el-dåser og rør på Stejlepladsen (SP2).
 Ren statisk app: ingen server, intet login. Alle registreringer og billeder gemmes lokalt på telefonen.
@@ -22,7 +22,7 @@ Hvis du hellere vil bruge **GitHub Desktop**, kan du kopiere indholdet af de fir
 ## Installér på iPhone
 
 1. Åbn adressen i **Safari**.
-2. Tryk **Del** (firkanten med pil op) og vælg **Føj til hjemmeskærm**. Navnet "SP2 Dåsekontrol" er udfyldt på forhånd.
+2. Tryk **Del** (firkanten med pil op) og vælg **Føj til hjemmeskærm**. Navnet "Stejlepladsen" er udfyldt på forhånd.
 3. Åbn appen fra **ikonet på hjemmeskærmen**, og brug den kun derfra. Safari og hjemmeskærmsappen har hver deres lager, så registreringer foretaget i Safari ses ikke i appen.
 4. Gå til **Menu → Hent alle tegninger**. Det er ca. 55 MB, så gør det på wifi. Derefter virker alt uden dækning.
 
@@ -77,3 +77,8 @@ Hvis tegningerne bliver revideret: læg de nye PNG-filer i `tegninger/`, og ret 
 - **Fællesrum** ligger også på de etager, hvor de er (👥), fx miljøstationen i F3-A stue.
 - **Boligsiden** viser selve boligtegningen; tryk på den for stor visning med zoom og måling.
 - **Måling**: et tryk sætter altid et nyt punkt (også tæt på et andet). Hold fingeren stille på et punkt i et halvt sekund for at flytte det – det hopper op over fingeren. *Fang streg* tager altid den streg, der er nærmest sigtet.
+
+## Nyt i 2.3
+- Appen hedder nu **Stejlepladsen etape 2** (på hjemmeskærmen "Stejlepladsen"). Ikonet beholder det gamle navn, til appen lægges på hjemmeskærmen igen.
+- **Menu → 📦 Dalux-pakke**: sæt flueben ved opgangene og hent en zip-fil med én mappe pr. opgang og én undermappe pr. bolig. Billederne hedder fx `K1-B_1-th_1.jpg`, og hver bolig har en tekstfil med registreringerne. Kun registreringer med afvigelse eller billeder kommer med. Øverst ligger `oversigt.csv` til Excel.
+- **Ekstraarbejde** på forsiden: alle kan oprette en seddel (nummereres automatisk fra 1) med overskrift, dato/uge, beskrivelse, materialer, timer og billeder. Den der oprettede og Morten kan rette; kun Morten kan slette. *Kopiér som tekst* giver en færdig tekst til mail. **Oversigt (timer)** er låst med en ekstra kode, som Morten vælger første gang; herfra kan den hentes som Excel (CSV).

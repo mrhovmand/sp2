@@ -1,11 +1,11 @@
-/* SP2 Dåsekontrol – service worker
+/* Stejlepladsen etape 2 – service worker
  *
  * NY VERSION: ret kun VERSION herunder (fx "1.0.1") og upload. Telefonen viser så
  * beskeden "Der er en ny version". Registreringer og billeder ligger i IndexedDB
  * og røres ALDRIG af service workeren. Tegninger ligger i deres egen cache
  * (DRAW_CACHE), som heller ikke slettes ved opdatering.
  */
-const VERSION = "2.2.1";
+const VERSION = "2.3.0";
 const SHELL_CACHE = "sp2-app-" + VERSION;
 const DRAW_CACHE = "sp2-tegninger-v1"; // skift kun navn hvis tegningerne udskiftes
 const SHELL = [

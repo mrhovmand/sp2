@@ -1,7 +1,7 @@
 {
-  "name": "SP2 Dåsekontrol",
-  "short_name": "SP2 Dåsekontrol",
-  "description": "Kontrol af indstøbte el-dåser og rør på Stejlepladsen (SP2)",
+  "name": "Stejlepladsen etape 2",
+  "short_name": "Stejlepladsen",
+  "description": "Tegninger, registreringer, opgaver og ekstraarbejde – Stejlepladsen etape 2",
   "lang": "da",
   "start_url": "./",
   "scope": "./",

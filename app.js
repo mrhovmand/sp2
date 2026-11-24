@@ -1,4 +1,4 @@
-/* SP2 Dåsekontrol – app
+/* Stejlepladsen etape 2 (tidl. SP2 Dåsekontrol) – app
  * Data gemmes lokalt i IndexedDB ("sp2-daasekontrol"). Databasen må kun udvides:
  * nye versioner må tilføje stores/felter, men aldrig slette eller nulstille.
  */
@@ -10,6 +10,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const nowIso = () => new Date().toISOString();
 const fmtDate = (iso) => { if (!iso) return ""; const d = new Date(iso); return d.toLocaleDateString("da-DK") + " " + d.toLocaleTimeString("da-DK", { hour: "2-digit", minute: "2-digit" }); };
+const APP_NAME = "Stejlepladsen etape 2";
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 let toastT;
 function toast(msg, ms = 2200) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => (t.hidden = true), ms); }
@@ -183,6 +184,8 @@ function parentRoute() {
   if (p[0] === "opgaver" && p[1] === "t") return taskBack;
   if (p[0] === "opgaver" && p[1]) return "/opgaver";
   if (p[0] === "terraen") return "/";
+  if (p[0] === "dalux") return "/menu";
+  if (p[0] === "ekstra" && p[1]) return "/ekstra";
   return "/";
 }
 // Tilbage går ét niveau op (dåse → bolig → etage → opgang → oversigt) i stedet for gennem historikken
@@ -195,7 +198,7 @@ function setTop(title, sub = "", back = true) {
   $("#subtitle").textContent = sub;
   $("#btnBack").hidden = !back;
   $("#btnHome").hidden = !back;
-  document.title = title === "SP2 Dåsekontrol" ? title : `${title} – SP2`;
+  document.title = title === APP_NAME ? title : `${title} – SP2`;
 }
 
 let renderSeq = 0;
@@ -217,6 +220,8 @@ async function render() {
     if (p[0] === "rapport") return viewReport(m);
     if (p[0] === "materialer") return viewMaterials(m);
     if (p[0] === "terraen") return viewSite(m);
+    if (p[0] === "dalux") return viewDalux(m);
+    if (p[0] === "ekstra") return p[1] === "oversigt" ? viewExtraOverview(m) : p[1] ? viewExtra(m, p[1]) : viewExtras(m);
     if (p[0] === "opgaver") return p[1] === "t" && p[2] ? viewTask(m, p[2]) : p[1] === "indsaet" ? viewTaskPaste(m) : p[1] ? viewTaskList(m, p[1]) : viewTasks(m);
     return viewHome(m);
   } catch (e) { console.error(e); m.innerHTML = `<div class="card">Der skete en fejl: ${esc(e.message)}</div>`; }
@@ -225,14 +230,14 @@ async function render() {
 /* ---------------- Forside ---------------- */
 async function viewHome(m) {
   const my = renderSeq;
-  setTop("SP2 Dåsekontrol", "Stejlepladsen – vælg opgang", false);
+  setTop("Stejlepladsen", "Etape 2", false); document.title = APP_NAME;
   const cached = await countCachedDrawings();
   const nudge = await backupNudge();
   if (my !== renderSeq) return;
   const total = ALL_DRAWINGS().length;
   const mats = await metaGet("materials", {});
   if (my !== renderSeq) return;
-  let h = homeSyncHtml() + (nudge ? `<div class="status small">${nudge}</div>` : "") + materialsCardHtml(mats) + tasksCardHtml(mats) + orientHtml();
+  let h = homeSyncHtml() + (nudge ? `<div class="status small">${nudge}</div>` : "") + materialsCardHtml(mats) + tasksCardHtml(mats) + extraCardHtml(mats) + orientHtml();
   for (const b of BUILDINGS) {
     const ops = [...OPG.values()].filter((o) => o.b === b);
     h += `<h2>Bygning ${b}</h2><div class="grid">`;
@@ -332,6 +337,229 @@ function viewSite(m) {
   let h = "";
   for (const [g, ds] of groups) h += `<h2>${ico[g] || ""} ${esc(g)}</h2><div class="list">${ds.map((d) => drawBtn("btn", esc(d.label), d, {})).join("")}</div>`;
   m.innerHTML = h;
+}
+
+
+/* ---------------- Dalux-pakke: zip med en mappe pr. opgang og bolig ---------------- */
+const fileSafe = (t) => String(t).replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim();
+const nameSafe = (t) => String(t).replace(/\./g, "").replace(/[\\/:*?"<>|]+/g, "-").trim().replace(/\s+/g, "-");
+// Med i pakken: registreringer med afvigelse eller billeder
+const daluxRelevant = (r) => r.devBox || r.devPipe || r.devOther || (r.photos || []).length;
+async function viewDalux(m) {
+  const my = renderSeq;
+  setTop("Dalux-pakke", "Vælg opgange");
+  const saved = await metaGet("daluxOpgs", null);
+  if (my !== renderSeq) return;
+  const cnt = {}; for (const r of REGS.values()) if (daluxRelevant(r)) cnt[r.opg] = (cnt[r.opg] || 0) + 1;
+  let h = `<div class="card small">Pakken er en zip-fil med en mappe pr. opgang og en undermappe pr. bolig. Hver bolig har sine billeder (navngivet efter boligen) og en tekstfil med registreringerne. Kun registreringer med afvigelse eller billeder kommer med.</div>
+    <div class="btnrow"><button class="btn small" id="dAll">Vælg alle med registreringer</button><button class="btn small" id="dNone">Fravælg alle</button></div>`;
+  for (const b of BUILDINGS) {
+    const ops = [...OPG.values()].filter((o) => o.b === b);
+    h += `<h2>Bygning ${esc(b)}</h2><div class="grid">`;
+    for (const o of ops) {
+      const n = cnt[o.id] || 0, on = saved ? saved.includes(o.id) : false;
+      h += `<button class="tile dsel ${on ? "on" : ""}" data-dopg="${esc(o.id)}"${n ? "" : " disabled"}><b>${on ? "☑" : "☐"} ${esc(o.id)}</b><span class="sub">${n ? `${n} registrering${n > 1 ? "er" : ""}` : "Intet at sende"}</span></button>`;
+    }
+    h += `</div>`;
+  }
+  h += `<div class="btnrow" style="margin-top:16px"><button class="btn primary" id="dGo">📦 Hent Dalux-pakke</button></div><div class="small" id="dMsg"></div>`;
+  m.innerHTML = h;
+  const sel = () => [...m.querySelectorAll(".dsel.on")].map((b) => b.dataset.dopg);
+  const paint = (b, on) => { b.classList.toggle("on", on); b.querySelector("b").textContent = `${on ? "☑" : "☐"} ${b.dataset.dopg}`; };
+  m.querySelectorAll(".dsel").forEach((b) => b.onclick = () => { paint(b, !b.classList.contains("on")); metaSet("daluxOpgs", sel()); });
+  $("#dAll").onclick = () => { m.querySelectorAll(".dsel:not([disabled])").forEach((b) => paint(b, true)); metaSet("daluxOpgs", sel()); };
+  $("#dNone").onclick = () => { m.querySelectorAll(".dsel").forEach((b) => paint(b, false)); metaSet("daluxOpgs", sel()); };
+  $("#dGo").onclick = async () => {
+    const opgs = sel(); if (!opgs.length) return toast("Sæt flueben ved mindst én opgang");
+    const btn = $("#dGo"); btn.disabled = true; $("#dMsg").innerHTML = `<span class="spinner"></span> Pakker …`;
+    try { await buildDalux(opgs, (t) => { const e = $("#dMsg"); if (e) e.innerHTML = `<span class="spinner"></span> ${esc(t)}`; }); }
+    catch (e) { console.error(e); toast("Pakken kunne ikke laves: " + e.message, 4000); }
+    btn.disabled = false; const e = $("#dMsg"); if (e) e.textContent = "";
+  };
+}
+async function buildDalux(opgs, progress) {
+  const enc = new TextEncoder(), files = [], root = `Dalux SP2 ${today()}`;
+  const q = (v) => { v = String(v ?? ""); return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+  const rows = [["Opgang", "Etage", "Bolig", "Tegning side", "Registrering nr.", "Type", "Rum", "Afvigelse dåse", "Afvigelse rør/udsparing", "Anden afvigelse", "Billeder", "Mappe", "Registreret af", "Dato"]];
+  let nRegs = 0, nPh = 0, missing = 0;
+  for (const opg of opgs) {
+    const units = [...new Set(allRegsSorted(opg).map((r) => r.unit))];
+    for (const unitId of units) {
+      const u = UNITS.get(unitId); if (!u) continue;
+      const regs = regsOf(unitId), rel = regs.filter(daluxRelevant); if (!rel.length) continue;
+      const un = unitName(u), folder = `${root}/${fileSafe(opg)}/${fileSafe(`${u.f[0]} – ${un}${u.real ? ` (side ${u.id})` : ""}`)}`;
+      const base = `${nameSafe(opg)}_${nameSafe(un)}`;
+      let txt = `${opg} · ${un}${u.real ? ` · tegning side ${u.id}` : ""} · ${u.f.join("–")}\r\n${"=".repeat(50)}\r\n`;
+      let pn = 0;
+      for (const r of rel) {
+        const i = regs.indexOf(r) + 1; nRegs++;
+        progress(`${opg} · ${un} – registrering ${i}`);
+        const names = [];
+        for (const pid of r.photos || []) {
+          const p = await getPhoto(pid);
+          if (!p) { missing++; names.push("(billede ikke hentet – mangler dækning)"); continue; }
+          pn++; nPh++; const fn = `${base}_${pn}.jpg`; names.push(fn);
+          files.push({ name: `${folder}/${fn}`, data: new Uint8Array(await p.blob.arrayBuffer()) });
+        }
+        const devs = [r.devBox ? `Afvigelse dåse${r.devBoxNote ? ": " + r.devBoxNote : ""}` : "", r.devPipe ? `Afvigelse rør/udsparing${r.devPipeNote ? ": " + r.devPipeNote : ""}` : "", r.devOther ? `Anden afvigelse${r.devOtherNote ? ": " + r.devOtherNote : ""}` : ""].filter(Boolean);
+        txt += `\r\nRegistrering ${i} – ${typeLabel(r)}\r\nRum: ${r.room || "ikke angivet"}\r\n${devs.length ? devs.map((d) => "• " + d).join("\r\n") : "Ingen afvigelse (dokumentation)"}\r\nBilleder: ${names.length ? names.join(", ") : "ingen"}\r\nRegistreret af ${r.by || "?"} · ${fmtDate(r.created)}\r\n`;
+        rows.push([opg, u.f.join("–"), un, u.real ? u.id : "", i, typeLabel(r), r.room, r.devBox ? r.devBoxNote || "ja" : "", r.devPipe ? r.devPipeNote || "ja" : "", r.devOther ? r.devOtherNote || "ja" : "", names.join(", "), folder.slice(root.length + 1), r.by || "", fmtDate(r.created)]);
+      }
+      files.push({ name: `${folder}/${base}_registreringer.txt`, data: enc.encode("﻿" + txt) });
+    }
+  }
+  if (!nRegs) return toast("Der er ingen registreringer med afvigelse eller billeder i de valgte opgange");
+  files.unshift({ name: `${root}/oversigt.csv`, data: enc.encode("﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n")) });
+  progress("Laver zip-fil …");
+  const blob = await zipBlob(files);
+  await offerFile(blob, `Dalux-SP2-${opgs.length === 1 ? nameSafe(opgs[0]) + "-" : ""}${today()}.zip`,
+    `Dalux-pakke med ${nRegs} registreringer og ${nPh} billeder er klar.${missing ? ` ${missing} billede(r) kunne ikke hentes uden dækning.` : ""}`);
+}
+
+/* ---------------- Ekstraarbejde (arbejdssedler) ----------------
+   Gemmes i den delte liste (kind: "extra"). Alle kan oprette; den der oprettede og Morten kan rette; kun Morten kan slette.
+   Oversigten er låst med en ekstra kode, som Morten vælger på sin telefon (gemmes som hash i den delte liste). */
+const isExtra = (x) => x.kind === "extra" && !x.deleted;
+const extrasOf = (store) => Object.values(store).filter(isExtra).sort((a, b) => (b.nr || 0) - (a.nr || 0) || b.created.localeCompare(a.created));
+const nextExtraNr = (store) => Object.values(store).filter((x) => x.kind === "extra").reduce((n, x) => Math.max(n, Number(x.nr) || 0), 0) + 1;
+const canEditExtra = (x) => isBoss() || (x.by && normName(x.by) === normName(MY_NAME));
+const hoursOf = (x) => { const v = parseFloat(String(x.hours || "").replace(",", ".")); return isFinite(v) ? v : 0; };
+const fmtH = (h) => (Math.round(h * 100) / 100).toString().replace(".", ",");
+function extraCardHtml(store) {
+  const xs = extrasOf(store);
+  const lines = xs.slice(0, 3).map((x) => `<div class="matline">Nr. ${esc(x.nr)} – ${esc(x.title || "(uden overskrift)")}</div>`).join("");
+  return `<button class="card matcard" data-go="/ekstra"><div class="mattitle"><b>Ekstraarbejde</b><span class="count ${xs.length ? "has" : ""}">${xs.length}</span></div>
+    ${lines || `<div class="matline muted">Ingen sedler – tryk for at oprette</div>`}${xs.length > 3 ? `<div class="matline muted">+ ${xs.length - 3} mere …</div>` : ""}</button>`;
+}
+function extraText(x) {
+  const parts = [`Ekstraarbejde nr. ${x.nr}${x.title ? " – " + x.title : ""}` + (x.when ? `\nDato/uge: ${x.when}` : "")];
+  if (x.desc) parts.push(`Beskrivelse:\n${x.desc.trim()}`);
+  if (x.mats) parts.push(`Materialer:\n${x.mats.trim()}`);
+  if (x.hours) parts.push(`Timer: ${x.hours}`);
+  return parts.join("\n\n");
+}
+async function viewExtras(m) {
+  const my = renderSeq;
+  setTop("Ekstraarbejde", syncConfigured() ? "Delt med holdet" : "");
+  const store = await metaGet("materials", {});
+  if (my !== renderSeq) return;
+  const xs = extrasOf(store);
+  m.innerHTML = `<div class="btnrow"><button class="btn primary" id="xNew">＋ Opret ekstraarbejde</button></div>
+    ${isBoss() ? `<div class="btnrow"><button class="btn" data-go="/ekstra/oversigt">📊 Oversigt (timer) 🔒</button></div>` : ""}
+    <div class="list">${xs.map((x) => `<button class="row" data-go="/ekstra/${encodeURIComponent(x.id)}"><div class="main">
+      <div class="name">Nr. ${esc(x.nr)} – ${esc(x.title || "(uden overskrift)")}</div>
+      <div class="sub">${esc(x.by || "?")}${x.when ? ` · ${esc(x.when)}` : ""}${x.hours ? ` · ${esc(x.hours)} t` : ""}${(x.photos || []).length ? ` · 📷 ${x.photos.length}` : ""}</div></div><span class="chev">›</span></button>`).join("") || `<p class="muted">Ingen sedler endnu.</p>`}</div>
+    ${syncConfigured() ? `<p class="small muted" id="syncLine">${esc(syncStatusText())}</p>` : ""}`;
+  $("#xNew").onclick = async () => {
+    const st = await metaGet("materials", {}), d = new Date();
+    const x = { id: uid(), kind: "extra", nr: nextExtraNr(st), title: "", when: `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`, desc: "", mats: "", hours: "", photos: [], by: MY_NAME || "", created: nowIso() };
+    await saveMat(x); go("/ekstra/" + encodeURIComponent(x.id));
+  };
+}
+async function viewExtra(m, id) {
+  const my = renderSeq;
+  const store = await metaGet("materials", {});
+  if (my !== renderSeq) return;
+  const x = store[id];
+  if (!x || x.deleted) { setTop("Ekstraarbejde"); m.innerHTML = `<p class="muted">Sedlen findes ikke længere.</p>`; return; }
+  x.photos = x.photos || [];
+  const ed = canEditExtra(x), ro = ed ? "" : " readonly";
+  setTop(`Ekstraarbejde nr. ${x.nr}`, x.by ? `Oprettet af ${x.by}` : "");
+  m.innerHTML = `
+    ${isBoss() ? `<label class="lbl" for="xNr">Nummer</label><input type="number" id="xNr" value="${esc(x.nr)}" inputmode="numeric">` : ""}
+    <label class="lbl" for="xTitle">Overskrift</label><input type="text" id="xTitle" value="${esc(x.title)}" placeholder="Fx Ekstra stikkontakt i skur"${ro}>
+    <label class="lbl" for="xWhen">Dato eller uge</label><input type="text" id="xWhen" value="${esc(x.when)}" placeholder="Fx 24.11.2026 eller uge 48"${ro}>
+    <label class="lbl" for="xDesc">Beskrivelse – hvor og hvad er lavet</label><textarea id="xDesc" rows="5"${ro}>${esc(x.desc)}</textarea>
+    <label class="lbl" for="xMats">Materialer (hvis brugt)</label><textarea id="xMats" rows="3" placeholder="Fx 1 stk. dobbelt stikkontakt, 10 m PVL 3G1,5"${ro}>${esc(x.mats)}</textarea>
+    <label class="lbl" for="xHours">Timer</label><input type="text" id="xHours" value="${esc(x.hours)}" inputmode="decimal" placeholder="Fx 1,5"${ro}>
+    <label class="lbl">Billeder (${x.photos.length})</label>
+    <div class="thumbs" id="xThumbs"></div>
+    ${ed ? `<div class="btnrow"><button class="btn yellow" id="xCam">📷 Tag billede</button><button class="btn" id="xPick">🖼️ Vælg billede</button></div>
+    <input type="file" id="xFileCam" accept="image/*" capture="environment" hidden><input type="file" id="xFilePick" accept="image/*" hidden>
+    <div id="xBusy" class="small" hidden><span class="spinner"></span> Komprimerer billede …</div>` : `<p class="small muted">Kun ${esc(x.by || "den der oprettede sedlen")} og Morten kan rette i den.</p>`}
+    <div class="btnrow" style="margin-top:16px"><button class="btn" id="xCopy">📋 Kopiér som tekst (til mail)</button></div>
+    <div class="btnrow"><button class="btn primary" id="xDone">Færdig</button></div>
+    ${isBoss() ? `<div class="btnrow"><button class="btn danger small" id="xDel">Slet sedlen</button></div>` : ""}
+    <p class="small muted">Gemmes automatisk${syncConfigured() ? " og deles med holdet" : ""}.</p>`;
+  let t = null;
+  const save = () => { clearTimeout(t); return saveMat(x); };
+  const soon = () => { clearTimeout(t); t = setTimeout(save, 700); };
+  if (ed) {
+    [["xTitle", "title"], ["xWhen", "when"], ["xDesc", "desc"], ["xMats", "mats"], ["xHours", "hours"]].forEach(([el, k]) => { $("#" + el).oninput = (e) => { x[k] = e.target.value; soon(); }; });
+  }
+  const nr = $("#xNr"); if (nr) nr.oninput = () => { const v = parseInt(nr.value); if (v > 0) { x.nr = v; setTop(`Ekstraarbejde nr. ${v}`, x.by ? `Oprettet af ${x.by}` : ""); soon(); } };
+  const thumbs = async () => {
+    const box = $("#xThumbs"); if (!box) return; box.innerHTML = "";
+    box.previousElementSibling.textContent = `Billeder (${x.photos.length})`;
+    for (const pid of x.photos) {
+      const p = await getPhoto(pid); const b = document.createElement("button");
+      if (!p) { b.innerHTML = `<span class="small muted">Billedet hentes, når der er dækning</span>`; box.appendChild(b); continue; }
+      const url = URL.createObjectURL(p.blob); b.innerHTML = `<img src="${url}" alt="Billede">`;
+      b.onclick = () => openPhoto(pid, url, ed ? async () => { x.photos = x.photos.filter((q) => q !== pid); await dbDel("photos", pid); await save(); thumbs(); } : null);
+      box.appendChild(b);
+    }
+  };
+  thumbs();
+  if (ed) {
+    const addFile = async (e) => {
+      const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+      $("#xBusy").hidden = false;
+      try { const blob = await compressImage(f), pid = uid(); await dbPut("photos", { id: pid, reg: "extra:" + x.id, blob, created: nowIso() }); x.photos.push(pid); await save(); await thumbs(); toast(`Billede gemt (${Math.round(blob.size / 1024)} kB)`); }
+      catch (err) { console.error(err); toast("Kunne ikke gemme billedet: " + err.message, 4000); }
+      $("#xBusy").hidden = true;
+    };
+    $("#xCam").onclick = () => $("#xFileCam").click(); $("#xPick").onclick = () => $("#xFilePick").click();
+    $("#xFileCam").onchange = addFile; $("#xFilePick").onchange = addFile;
+  }
+  $("#xCopy").onclick = async () => { const txt = extraText(x); try { await navigator.clipboard.writeText(txt); toast("Kopieret – sæt ind i en mail"); } catch { await dialog(txt, [{ label: "Luk", value: null }]); } };
+  $("#xDone").onclick = async () => { await save(); location.replace("#/ekstra"); };
+  const del = $("#xDel"); if (del) del.onclick = async () => { if (!(await confirmBox(`Slet ekstraarbejde nr. ${x.nr}?`, "Slet"))) return; x.deleted = true; await save(); location.replace("#/ekstra"); };
+}
+// Oversigt med egen kode (kun Morten)
+async function sha256hex(s) { const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)); return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join(""); }
+async function viewExtraOverview(m) {
+  const my = renderSeq;
+  setTop("Ekstraarbejde – oversigt", "Kun for Morten");
+  const store = await metaGet("materials", {}), unlocked = await metaGet("extraUnlocked", "");
+  if (my !== renderSeq) return;
+  const lock = store["extralock"] && !store["extralock"].deleted ? store["extralock"] : null;
+  if (!lock) {
+    if (!isBoss()) { m.innerHTML = `<p class="muted">Oversigten er ikke slået til.</p>`; return; }
+    m.innerHTML = `<div class="card"><b>Vælg en kode til oversigten</b><div class="small muted">Koden gælder kun oversigten over timer. Den deles ikke med nogen, og telefonen husker den bagefter. Mindst 4 tegn.</div>
+      <label class="lbl" for="lk1">Kode</label><input type="password" id="lk1" autocomplete="new-password">
+      <label class="lbl" for="lk2">Gentag koden</label><input type="password" id="lk2" autocomplete="new-password">
+      <div class="btnrow"><button class="btn primary" id="lkSet">Gem kode</button></div></div>`;
+    $("#lkSet").onclick = async () => {
+      const a = $("#lk1").value, b = $("#lk2").value;
+      if (a.length < 4) return toast("Koden skal være mindst 4 tegn"); if (a !== b) return toast("De to koder er ikke ens");
+      const salt = uid(), hash = await sha256hex(salt + a);
+      await saveMat({ id: "extralock", kind: "extralock", salt, hash, created: nowIso() }); await metaSet("extraUnlocked", hash);
+      toast("Koden er gemt"); viewExtraOverview(m);
+    };
+    return;
+  }
+  if (unlocked !== lock.hash) {
+    m.innerHTML = `<div class="card"><b>🔒 Oversigten er låst</b><label class="lbl" for="lkIn">Kode</label><input type="password" id="lkIn" autocomplete="current-password">
+      <div class="btnrow"><button class="btn primary" id="lkGo">Lås op</button></div></div>`;
+    const go_ = async () => { if ((await sha256hex(lock.salt + $("#lkIn").value)) === lock.hash) { await metaSet("extraUnlocked", lock.hash); viewExtraOverview(m); } else toast("Forkert kode"); };
+    $("#lkGo").onclick = go_; $("#lkIn").onkeydown = (e) => { if (e.key === "Enter") go_(); };
+    return;
+  }
+  const xs = extrasOf(store).sort((a, b) => (a.nr || 0) - (b.nr || 0));
+  const total = xs.reduce((n, x) => n + hoursOf(x), 0);
+  m.innerHTML = `<div class="xtable"><table><thead><tr><th>Nr.</th><th>Overskrift</th><th>Dato/uge</th><th class="r">Timer</th><th>Af</th></tr></thead><tbody>
+    ${xs.map((x) => `<tr data-go="/ekstra/${encodeURIComponent(x.id)}"><td>${esc(x.nr)}</td><td>${esc(x.title || "")}</td><td>${esc(x.when || "")}</td><td class="r">${x.hours ? esc(fmtH(hoursOf(x))) : ""}</td><td>${esc(x.by || "")}</td></tr>`).join("")}
+    </tbody><tfoot><tr><td></td><td><b>I alt</b></td><td></td><td class="r"><b>${fmtH(total)}</b></td><td></td></tr></tfoot></table></div>
+    <div class="btnrow"><button class="btn primary" id="xCsv">Hent som Excel (CSV)</button></div>
+    <div class="btnrow"><button class="btn small" id="xLock">Lås oversigten igen på denne telefon</button><button class="btn small" id="xNewCode">Skift kode</button></div>`;
+  $("#xCsv").onclick = async () => {
+    const q = (v) => { v = String(v ?? ""); return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
+    const rows = [["Nr.", "Overskrift", "Dato/uge", "Timer", "Beskrivelse", "Materialer", "Oprettet af", "Oprettet", "Billeder"],
+      ...xs.map((x) => [x.nr, x.title, x.when, x.hours ? fmtH(hoursOf(x)) : "", x.desc, x.mats, x.by, fmtDate(x.created), (x.photos || []).length]), [], ["", "I alt", "", fmtH(total)]];
+    await offerFile(new Blob(["﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" }), `Ekstraarbejde-SP2-${today()}.csv`, `Oversigt med ${xs.length} sedler og ${fmtH(total)} timer er klar.`);
+  };
+  $("#xLock").onclick = async () => { await metaSet("extraUnlocked", ""); go("/ekstra"); };
+  $("#xNewCode").onclick = async () => { if (!(await confirmBox("Vælg en ny kode til oversigten?", "Ny kode"))) return; await saveMat({ ...lock, deleted: true }); await metaSet("extraUnlocked", ""); viewExtraOverview(m); };
 }
 
 /* ---------------- Materialeliste ---------------- */
@@ -885,6 +1113,7 @@ async function renderThumbs() {
 }
 function openPhoto(pid, url, onDelete) {
   const v = $("#photoView"); $("#pvImg").src = url; v.hidden = false;
+  $("#pvDelete").hidden = onDelete === null; // null = må ikke slette (fx andres ekstraarbejde)
   $("#pvClose").onclick = () => (v.hidden = true);
   $("#pvDelete").onclick = async () => {
     if (!(await confirmBox("Slet dette billede?", "Slet billede"))) return;
@@ -977,6 +1206,7 @@ async function viewMenu(m) {
     <div class="list">
       <button class="btn" data-go="/ov">Overblik – alle opgange</button>
       <button class="btn" data-go="/rapport">Rapport (print / PDF)</button>
+      <button class="btn" data-go="/dalux">📦 Dalux-pakke (zip med billeder)</button>
       <button class="btn" id="mCsv">Eksportér CSV</button>
     </div>
     <h2>Backup</h2>
@@ -988,7 +1218,7 @@ async function viewMenu(m) {
       <input type="file" id="mRestoreFile" accept=".zip,application/zip" hidden>
     </div>
     <h2>Om</h2>
-    <div class="card small">SP2 Dåsekontrol · version <b id="mVer">…</b><br>
+    <div class="card small">${APP_NAME} · version <b id="mVer">…</b><br>
       ${REGS.size} registreringer i alt.<br>Tegninger: Artelia N930 (I1, J1, J2, K1, K3) og N931 rev. 1 (F1, F2, F3, F5, F6).
       <div class="btnrow"><button class="btn small" id="mUpd">Søg efter ny version</button></div></div>`;
   swVersion().then((v) => { const e = $("#mVer"); if (e) e.textContent = v || "ukendt"; });
@@ -1577,7 +1807,7 @@ async function reportHtml(o, embed) {
   const opgs = o.opg ? [o.opg] : [...OPG.keys()];
   const all = allRegsSorted(o.opg);
   const COLS = { devBox: ["Dåse", "devBoxNote", "OK"], devPipe: ["Rør/udsparing", "devPipeNote", "OK"], devOther: ["Anden afvigelse", "devOtherNote", "–"] };
-  let h = `<div class="rep"><h1>SP2 Dåsekontrol – Stejlepladsen</h1>
+  let h = `<div class="rep"><h1>Stejlepladsen etape 2 – registreringer</h1>
     <div>Rapport ${new Date().toLocaleString("da-DK")} · ${o.opg ? esc(opgLabel(o.opg)) : "Alle opgange"} · ${all.length} registreringer · <span class="afv">${all.filter(relDev).length} med valgte afvigelser</span></div>
     <div>Viser: ${cats.length ? cats.map((k) => CHECKS[k].toLowerCase()).join(", ") : "ingen afvigelsestyper valgt"}${o.withOk ? " + registreringer uden afvigelse" : ""}</div>
     <h2>Opsummering</h2><table><tr><th>Opgang</th><th>Etage</th><th>Boliger med registrering</th><th>Registreringer</th>${cats.map((k) => `<th>${COLS[k][0]}</th>`).join("")}</tr>`;
