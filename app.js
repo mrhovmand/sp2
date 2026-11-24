@@ -289,13 +289,16 @@ function bindLoginCard() {
 }
 
 /* ---------------- Orienteringsplan på forsiden ---------------- */
+// Byggerækkefølge (F5 og F6 kører samtidig)
+const BUILD_ORDER = { K1: 1, K3: 2, I1: 3, F5: 4, F6: 4, J2: 5, J1: 6, F1: 7, F3: 8, F2: 9 };
 function orientHtml() {
   if (!ORIENT) return "";
   const spots = Object.entries(ORIENT.hs).filter(([b]) => BUILDINGS.includes(b))
     .sort((a, b) => (a[0] === "J2") - (b[0] === "J2")) // J2 øverst, hvor den overlapper J1
-    .map(([b, r]) => `<button class="ospot" data-ob="${esc(b)}" style="left:${r[0] * 100}%;top:${r[1] * 100}%;width:${(r[2] - r[0]) * 100}%;height:${(r[3] - r[1]) * 100}%" aria-label="Bygning ${esc(b)}"><span>${esc(b)}</span></button>`).join("");
+    .map(([b, r]) => `<button class="ospot" data-ob="${esc(b)}" style="left:${r[0] * 100}%;top:${r[1] * 100}%;width:${(r[2] - r[0]) * 100}%;height:${(r[3] - r[1]) * 100}%" aria-label="Bygning ${esc(b)}"><span>${esc(b)}</span>${BUILD_ORDER[b] ? `<i class="oord" title="Byggerækkefølge">${BUILD_ORDER[b]}</i>` : ""}</button>`).join("");
   return `<div class="card orient"><div class="mattitle"><b>Byggepladsen</b><span class="small muted">tryk på en bygning</span></div>
-    <div class="owrap" id="oWrap"><img src="${esc(ORIENT.thumb)}" alt="Orienteringsplan" loading="lazy">${spots}</div></div>`;
+    <div class="owrap" id="oWrap"><img src="${esc(ORIENT.thumb)}" alt="Orienteringsplan" loading="lazy">${spots}</div>
+    <div class="small muted" style="margin-top:6px"><i class="oord inl">1</i> = byggerækkefølge (F5 og F6 samtidig)</div></div>`;
 }
 function bindOrient() {
   const w = $("#oWrap"); if (!w) return;
