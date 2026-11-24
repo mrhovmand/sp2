@@ -423,7 +423,7 @@ async function buildDalux(opgs, progress) {
    Gemmes i den delte liste (kind: "extra"). Alle kan oprette; den der oprettede og Morten kan rette; kun Morten kan slette.
    Oversigten er låst med en ekstra kode, som Morten vælger på sin telefon (gemmes som hash i den delte liste). */
 const isExtra = (x) => x.kind === "extra" && !x.deleted;
-const extrasOf = (store) => Object.values(store).filter(isExtra).sort((a, b) => (b.nr || 0) - (a.nr || 0) || b.created.localeCompare(a.created));
+const extrasOf = (store, withArchived = false) => Object.values(store).filter((x) => isExtra(x) && (withArchived || !x.archived)).sort((a, b) => (b.nr || 0) - (a.nr || 0) || b.created.localeCompare(a.created));
 const nextExtraNr = (store) => Object.values(store).filter((x) => x.kind === "extra").reduce((n, x) => Math.max(n, Number(x.nr) || 0), 0) + 1;
 const canEditExtra = (x) => isBoss() || (x.by && normName(x.by) === normName(MY_NAME));
 const hoursOf = (x) => { const v = parseFloat(String(x.hours || "").replace(",", ".")); return isFinite(v) ? v : 0; };
@@ -464,7 +464,7 @@ async function viewExtra(m, id) {
   const store = await metaGet("materials", {});
   if (my !== renderSeq) return;
   const x = store[id];
-  if (!x || x.deleted) { setTop("Ekstraarbejde"); m.innerHTML = `<p class="muted">Sedlen findes ikke længere.</p>`; return; }
+  if (!x || x.deleted || (x.archived && !isBoss())) { setTop("Ekstraarbejde"); m.innerHTML = `<p class="muted">Sedlen findes ikke længere${x && x.archived ? " – den er arkiveret" : ""}.</p>`; return; }
   x.photos = x.photos || [];
   const ed = canEditExtra(x), ro = ed ? "" : " readonly";
   setTop(`Ekstraarbejde nr. ${x.nr}`, x.by ? `Oprettet af ${x.by}` : "");
@@ -482,7 +482,9 @@ async function viewExtra(m, id) {
     <div id="xBusy" class="small" hidden><span class="spinner"></span> Komprimerer billede …</div>` : `<p class="small muted">Kun ${esc(x.by || "den der oprettede sedlen")} og Morten kan rette i den.</p>`}
     <div class="btnrow" style="margin-top:16px"><button class="btn" id="xCopy">📋 Kopiér som tekst (til mail)</button></div>
     <div class="btnrow"><button class="btn primary" id="xDone">Færdig</button></div>
-    ${isBoss() ? `<div class="btnrow"><button class="btn danger small" id="xDel">Slet sedlen</button></div>` : ""}
+    ${isBoss() ? `<div class="btnrow"><button class="btn small" id="xArch">${x.archived ? "↩︎ Hent tilbage fra arkivet" : "🗄️ Arkivér (skjul for de andre)"}</button></div>
+      <div class="btnrow"><button class="btn danger small" id="xDel">Slet sedlen</button></div>` : ""}
+    ${x.archived ? `<p class="small muted">Arkiveret ${fmtWhen(x.archivedAt)} – kun synlig i din oversigt.</p>` : ""}
     <p class="small muted">Gemmes automatisk${syncConfigured() ? " og deles med holdet" : ""}.</p>`;
   let t = null;
   const save = () => { clearTimeout(t); return saveMat(x); };
@@ -517,6 +519,30 @@ async function viewExtra(m, id) {
   $("#xCopy").onclick = async () => { const txt = extraText(x); try { await navigator.clipboard.writeText(txt); toast("Kopieret – sæt ind i en mail"); } catch { await dialog(txt, [{ label: "Luk", value: null }]); } };
   $("#xDone").onclick = async () => { await save(); location.replace("#/ekstra"); };
   const del = $("#xDel"); if (del) del.onclick = async () => { if (!(await confirmBox(`Slet ekstraarbejde nr. ${x.nr}?`, "Slet"))) return; x.deleted = true; await save(); location.replace("#/ekstra"); };
+  const ar = $("#xArch"); if (ar) ar.onclick = async () => {
+    x.archived = !x.archived; x.archivedAt = x.archived ? nowIso() : "";
+    await save(); toast(x.archived ? `Nr. ${x.nr} er arkiveret` : `Nr. ${x.nr} er hentet tilbage`);
+    location.replace(x.archived ? "#/ekstra/oversigt" : "#/ekstra");
+  };
+}
+// Én A4-side pr. ekstraarbejde (til print/PDF)
+async function extraPagesHtml(xs) {
+  const nl = (t) => esc(t || "").replace(/\n/g, "<br>");
+  let h = "";
+  for (const x of xs) {
+    const imgs = [];
+    for (const pid of (x.photos || []).slice(0, 4)) { const p = await getPhoto(pid); if (p) imgs.push(await blobToDataUrl(p.blob)); }
+    h += `<section class="xp">
+      <div class="xphead"><div><div class="xpsmall">Stejlepladsen etape 2 · Ekstraarbejde</div><h1>Nr. ${esc(x.nr)}${x.title ? " – " + esc(x.title) : ""}</h1></div></div>
+      <table class="xpmeta"><tr><th>Dato/uge</th><td>${esc(x.when || "")}</td><th>Timer</th><td>${x.hours ? esc(fmtH(hoursOf(x))) : ""}</td></tr>
+        <tr><th>Udført af</th><td>${esc(x.by || "")}</td><th>Oprettet</th><td>${fmtDate(x.created)}</td></tr></table>
+      <h2>Beskrivelse</h2><div class="xpbox">${nl(x.desc) || "&nbsp;"}</div>
+      ${x.mats ? `<h2>Materialer</h2><div class="xpbox">${nl(x.mats)}</div>` : ""}
+      ${imgs.length ? `<h2>Billeder</h2><div class="xpimgs n${imgs.length}">${imgs.map((u) => `<img src="${u}" alt="">`).join("")}</div>` : ""}
+      <div class="xpfoot">Udskrevet ${fmtDate(nowIso())}${(x.photos || []).length > 4 ? ` · ${x.photos.length - 4} billede(r) mere i appen` : ""}</div>
+    </section>`;
+  }
+  return h;
 }
 // Oversigt med egen kode (kun Morten)
 async function sha256hex(s) { const b = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s)); return [...new Uint8Array(b)].map((x) => x.toString(16).padStart(2, "0")).join(""); }
@@ -548,18 +574,49 @@ async function viewExtraOverview(m) {
     $("#lkGo").onclick = go_; $("#lkIn").onkeydown = (e) => { if (e.key === "Enter") go_(); };
     return;
   }
-  const xs = extrasOf(store).sort((a, b) => (a.nr || 0) - (b.nr || 0));
+  const showArch = await metaGet("extraShowArch", true);
+  const xs = extrasOf(store, showArch).sort((a, b) => (a.nr || 0) - (b.nr || 0));
   const total = xs.reduce((n, x) => n + hoursOf(x), 0);
-  m.innerHTML = `<div class="xtable"><table><thead><tr><th>Nr.</th><th>Overskrift</th><th>Dato/uge</th><th class="r">Timer</th><th>Af</th></tr></thead><tbody>
-    ${xs.map((x) => `<tr data-go="/ekstra/${encodeURIComponent(x.id)}"><td>${esc(x.nr)}</td><td>${esc(x.title || "")}</td><td>${esc(x.when || "")}</td><td class="r">${x.hours ? esc(fmtH(hoursOf(x))) : ""}</td><td>${esc(x.by || "")}</td></tr>`).join("")}
-    </tbody><tfoot><tr><td></td><td><b>I alt</b></td><td></td><td class="r"><b>${fmtH(total)}</b></td><td></td></tr></tfoot></table></div>
-    <div class="btnrow"><button class="btn primary" id="xCsv">Hent som Excel (CSV)</button></div>
+  const picked = new Set(await metaGet("extraPicked", []));
+  m.innerHTML = `<div class="btnrow"><button class="btn small" id="xArchTog">${showArch ? "Skjul arkiverede" : "Vis også arkiverede"}</button><button class="btn small" id="xPickAll">Vælg alle</button></div>
+    <div class="xtable"><table><thead><tr><th class="c">✓</th><th>Nr.</th><th>Overskrift</th><th>Dato/uge</th><th class="r">Timer</th><th>Af</th></tr></thead><tbody>
+    ${xs.map((x) => `<tr class="${x.archived ? "arch" : ""}"><td class="c"><button class="xpick ${picked.has(x.id) ? "on" : ""}" data-xpick="${esc(x.id)}" aria-label="Vælg nr. ${esc(x.nr)}">${picked.has(x.id) ? "✓" : ""}</button></td>
+      <td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(x.nr)}</td><td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(x.title || "")}${x.archived ? ` <span class="badge">arkiveret</span>` : ""}</td><td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(x.when || "")}</td><td class="r" data-go="/ekstra/${encodeURIComponent(x.id)}">${x.hours ? esc(fmtH(hoursOf(x))) : ""}</td><td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(x.by || "")}</td></tr>`).join("")}
+    </tbody><tfoot><tr><td></td><td></td><td><b>I alt</b></td><td></td><td class="r"><b>${fmtH(total)}</b></td><td></td></tr></tfoot></table></div>
+    <div class="btnrow"><button class="btn primary" id="xPdf">🖨️ PDF af valgte (én A4 pr. seddel)</button></div>
+    <div class="btnrow"><button class="btn" id="xPdfFile">Gem valgte som fil (HTML)</button><button class="btn" id="xArchSel">🗄️ Arkivér valgte</button></div>
+    <div class="btnrow"><button class="btn" id="xCsv">Hent som Excel (CSV)</button></div>
     <div class="btnrow"><button class="btn small" id="xLock">Lås oversigten igen på denne telefon</button><button class="btn small" id="xNewCode">Skift kode</button></div>`;
   $("#xCsv").onclick = async () => {
     const q = (v) => { v = String(v ?? ""); return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
-    const rows = [["Nr.", "Overskrift", "Dato/uge", "Timer", "Beskrivelse", "Materialer", "Oprettet af", "Oprettet", "Billeder"],
-      ...xs.map((x) => [x.nr, x.title, x.when, x.hours ? fmtH(hoursOf(x)) : "", x.desc, x.mats, x.by, fmtDate(x.created), (x.photos || []).length]), [], ["", "I alt", "", fmtH(total)]];
+    const rows = [["Nr.", "Overskrift", "Dato/uge", "Timer", "Beskrivelse", "Materialer", "Oprettet af", "Oprettet", "Billeder", "Arkiveret"],
+      ...xs.map((x) => [x.nr, x.title, x.when, x.hours ? fmtH(hoursOf(x)) : "", x.desc, x.mats, x.by, fmtDate(x.created), (x.photos || []).length, x.archived ? fmtDate(x.archivedAt) : ""]), [], ["", "I alt", "", fmtH(total)]];
     await offerFile(new Blob(["﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" }), `Ekstraarbejde-SP2-${today()}.csv`, `Oversigt med ${xs.length} sedler og ${fmtH(total)} timer er klar.`);
+  };
+  const sel = () => xs.filter((x) => picked.has(x.id));
+  m.querySelectorAll("[data-xpick]").forEach((b) => b.onclick = async () => {
+    const id = b.dataset.xpick; picked.has(id) ? picked.delete(id) : picked.add(id);
+    b.classList.toggle("on", picked.has(id)); b.textContent = picked.has(id) ? "✓" : ""; await metaSet("extraPicked", [...picked]);
+  });
+  $("#xPickAll").onclick = async () => { const all = xs.every((x) => picked.has(x.id)); xs.forEach((x) => all ? picked.delete(x.id) : picked.add(x.id)); await metaSet("extraPicked", [...picked]); viewExtraOverview(m); };
+  $("#xArchTog").onclick = async () => { await metaSet("extraShowArch", !showArch); viewExtraOverview(m); };
+  $("#xPdf").onclick = async () => {
+    const s_ = sel(); if (!s_.length) return toast("Sæt flueben ved de sedler, der skal med");
+    toast("Laver PDF …"); const p = $("#print"); p.innerHTML = await extraPagesHtml(s_);
+    await Promise.all([...p.querySelectorAll("img")].map((i) => i.decode().catch(() => {})));
+    window.print();
+  };
+  $("#xPdfFile").onclick = async () => {
+    const s_ = sel(); if (!s_.length) return toast("Sæt flueben ved de sedler, der skal med");
+    const css = [...document.styleSheets].flatMap((s) => { try { return [...s.cssRules].map((r) => r.cssText); } catch { return []; } }).filter((t) => t.startsWith(".xp")).join("\n");
+    const html = `<!DOCTYPE html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ekstraarbejde SP2 ${today()}</title><style>body{margin:0;font-family:Arial,sans-serif}${css}@page{size:A4;margin:14mm}</style></head><body>${await extraPagesHtml(s_)}</body></html>`;
+    await offerFile(new Blob([html], { type: "text/html" }), `Ekstraarbejde-SP2-${today()}.html`, `${s_.length} sedler er klar. Åbn filen og vælg Udskriv → Gem som PDF.`);
+  };
+  $("#xArchSel").onclick = async () => {
+    const s_ = sel().filter((x) => !x.archived); if (!s_.length) return toast("Ingen valgte, der ikke allerede er arkiveret");
+    if (!(await confirmBox(`Arkivér ${s_.length} seddel/sedler? De forsvinder hos de andre, men bliver her i oversigten.`, "Arkivér"))) return;
+    for (const x of s_) { x.archived = true; x.archivedAt = nowIso(); await saveMat(x); }
+    toast(`${s_.length} arkiveret`); viewExtraOverview(m);
   };
   $("#xLock").onclick = async () => { await metaSet("extraUnlocked", ""); go("/ekstra"); };
   $("#xNewCode").onclick = async () => { if (!(await confirmBox("Vælg en ny kode til oversigten?", "Ny kode"))) return; await saveMat({ ...lock, deleted: true }); await metaSet("extraUnlocked", ""); viewExtraOverview(m); };
