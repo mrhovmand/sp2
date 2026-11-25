@@ -502,11 +502,12 @@ async function viewExtras(m) {
     ${isBoss() ? `<div class="btnrow"><button class="btn" data-go="/ekstra/oversigt">📊 Oversigt (timer) 🔒</button></div>` : ""}
     <div class="list">${xs.map((x) => `<button class="row" data-go="/ekstra/${encodeURIComponent(x.id)}"><div class="main">
       <div class="name">Nr. ${esc(x.nr)} – ${esc(x.title || "(uden overskrift)")}</div>
-      <div class="sub">${esc(x.by || "?")}${x.when ? ` · ${esc(x.when)}` : ""}${x.hours ? ` · ${esc(x.hours)} t` : ""}${(x.photos || []).length ? ` · 📷 ${x.photos.length}` : ""}</div></div><span class="chev">›</span></button>`).join("") || `<p class="muted">Ingen sedler endnu.</p>`}</div>
+      <div class="sub">${esc(extraWho(x) || "?")}${x.when ? ` · ${esc(x.when)}` : ""}${x.hours ? ` · ${esc(x.hours)} t` : ""}${(x.photos || []).length ? ` · 📷 ${x.photos.length}` : ""}</div></div><span class="chev">›</span></button>`).join("") || `<p class="muted">Ingen sedler endnu.</p>`}</div>
     ${syncConfigured() ? `<p class="small muted" id="syncLine">${esc(syncStatusText())}</p>` : ""}`;
   $("#xNew").onclick = async () => {
     const st = await metaGet("materials", {}), d = new Date();
-    const x = { id: uid(), kind: "extra", nr: nextExtraNr(st), title: "", when: `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`, desc: "", mats: "", hours: "", photos: [], by: MY_NAME || "", created: nowIso() };
+    const me = whoChoices(st).find((n) => normName(n) === normName(MY_NAME));
+    const x = { id: uid(), kind: "extra", nr: nextExtraNr(st), who: me || "", title: "", when: `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`, desc: "", mats: "", hours: "", photos: [], by: MY_NAME || "", created: nowIso() };
     await saveMat(x); go("/ekstra/" + encodeURIComponent(x.id));
   };
 }
@@ -522,7 +523,11 @@ async function viewExtra(m, id) {
   m.innerHTML = `
     ${isBoss() ? `<label class="lbl" for="xNr">Nummer</label><input type="number" id="xNr" value="${esc(x.nr)}" inputmode="numeric">` : ""}
     <label class="lbl" for="xTitle">Overskrift</label><input type="text" id="xTitle" value="${esc(x.title)}" placeholder="Fx Ekstra stikkontakt i skur"${ro}>
-    <label class="lbl" for="xWhen">Dato eller uge</label><input type="text" id="xWhen" value="${esc(x.when)}" placeholder="Fx 24.11.2026 eller uge 48"${ro}>
+    <label class="lbl" for="xWhen">Dato eller uge</label>
+    <div class="matadd"><input type="text" id="xWhen" value="${esc(x.when)}" placeholder="Fx 24.11.2026 eller uge 48"${ro}>${ed ? `<button class="btn" id="xCal" aria-label="Vælg dato i kalender">📅</button>` : ""}</div>
+    <label class="lbl">Udført af</label>
+    <div class="chips" id="xWho">${whoChoices(store).map((n) => `<button class="chip ${normName(extraWho(x)) === normName(n) ? "on" : ""}" data-who="${esc(n)}"${ed ? "" : " disabled"}>${esc(n)}</button>`).join("")}<button class="chip ${extraWho(x) && !whoChoices(store).some((n) => normName(n) === normName(extraWho(x))) ? "on" : ""}" data-who=""${ed ? "" : " disabled"}>Andre</button></div>
+    <div id="xWhoOther" ${extraWho(x) && !whoChoices(store).some((n) => normName(n) === normName(extraWho(x))) ? "" : "hidden"}><input type="text" id="xWhoName" value="${esc(whoChoices(store).some((n) => normName(n) === normName(extraWho(x))) ? "" : extraWho(x))}" placeholder="Navn" autocomplete="off"${ro}></div>
     <label class="lbl" for="xDesc">Beskrivelse – hvor og hvad er lavet</label><textarea id="xDesc" rows="5"${ro}>${esc(x.desc)}</textarea>
     <label class="lbl" for="xMats">Materialer (hvis brugt)</label><textarea id="xMats" rows="3" placeholder="Fx 1 stk. dobbelt stikkontakt, 10 m PVL 3G1,5"${ro}>${esc(x.mats)}</textarea>
     <label class="lbl" for="xHours">Timer</label><input type="text" id="xHours" value="${esc(x.hours)}" inputmode="decimal" placeholder="Fx 1,5"${ro}>
@@ -542,6 +547,21 @@ async function viewExtra(m, id) {
   const soon = () => { clearTimeout(t); t = setTimeout(save, 700); };
   if (ed) {
     [["xTitle", "title"], ["xWhen", "when"], ["xDesc", "desc"], ["xMats", "mats"], ["xHours", "hours"]].forEach(([el, k]) => { $("#" + el).oninput = (e) => { x[k] = e.target.value; soon(); }; });
+  }
+  if (ed) {
+    $("#xCal").onclick = async () => {
+      const m_ = String(x.when || "").match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$/);
+      const cur = m_ ? ymd(new Date(Number(m_[3].length === 2 ? "20" + m_[3] : m_[3]), Number(m_[2]) - 1, Number(m_[1]))) : "";
+      const v = await pickDate(cur, "Vælg dato"); if (v === null) return;
+      const d = v ? parseYmd(v) : null; x.when = d ? `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}` : ""; $("#xWhen").value = x.when; save();
+    };
+    m.querySelectorAll("[data-who]").forEach((b) => b.onclick = () => {
+      m.querySelectorAll("[data-who]").forEach((c) => c.classList.toggle("on", c === b));
+      const other = !b.dataset.who; $("#xWhoOther").hidden = !other;
+      if (other) { x.who = $("#xWhoName").value.trim(); $("#xWhoName").focus(); } else x.who = b.dataset.who;
+      soon();
+    });
+    $("#xWhoName").oninput = (e) => { x.who = e.target.value.trim(); soon(); };
   }
   const nr = $("#xNr"); if (nr) nr.oninput = () => { const v = parseInt(nr.value); if (v > 0) { x.nr = v; setTop(`Ekstraarbejde nr. ${v}`, x.by ? `Oprettet af ${x.by}` : ""); soon(); } };
   const thumbs = async () => {
@@ -576,10 +596,14 @@ async function viewExtra(m, id) {
     location.replace(x.archived ? "#/ekstra/oversigt" : "#/ekstra");
   };
 }
+// Valgmuligheder til "Udført af": holdets personer (Tommy, Daniel, Stephan, Morten + evt. flere)
+const whoChoices = (store) => { const p = peopleOf(store).map((q) => q.name), order = ["Tommy", "Daniel", "Stephan", "Morten"]; return [...order.filter((n) => p.includes(n)), ...p.filter((n) => !order.includes(n))]; };
+// Udført af: eget felt (who); ældre sedler bruger den der oprettede
+const extraWho = (x) => (x.who !== undefined ? x.who : x.by) || "";
 // "28/11 – 2 timer – Tommy" (dele uden indhold udelades)
 function extraLine(x) {
   const h = hoursOf(x);
-  return [x.when || "", x.hours ? `${fmtH(h)} ${h === 1 ? "time" : "timer"}` : "", x.by || ""].filter(Boolean).join(" – ");
+  return [x.when || "", x.hours ? `${fmtH(h)} ${h === 1 ? "time" : "timer"}` : "", extraWho(x)].filter(Boolean).join(" – ");
 }
 // Én A4-side pr. ekstraarbejde (til print/PDF)
 async function extraPagesHtml(xs) {
@@ -639,7 +663,7 @@ async function viewExtraOverview(m) {
   m.innerHTML = `<div class="btnrow"><button class="btn small" id="xArchTog">${showArch ? "Skjul arkiverede" : "Vis også arkiverede"}</button><button class="btn small" id="xPickAll">Vælg alle</button></div>
     <div class="xtable"><table><thead><tr><th class="c">✓</th><th>Nr.</th><th>Overskrift</th><th>Dato/uge</th><th class="r">Timer</th><th>Af</th></tr></thead><tbody>
     ${xs.map((x) => `<tr class="${x.archived ? "arch" : ""}"><td class="c"><button class="xpick ${picked.has(x.id) ? "on" : ""}" data-xpick="${esc(x.id)}" aria-label="Vælg nr. ${esc(x.nr)}">${picked.has(x.id) ? "✓" : ""}</button></td>
-      <td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(x.nr)}</td><td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(x.title || "")}${x.archived ? ` <span class="badge">arkiveret</span>` : ""}</td><td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(x.when || "")}</td><td class="r" data-go="/ekstra/${encodeURIComponent(x.id)}">${x.hours ? esc(fmtH(hoursOf(x))) : ""}</td><td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(x.by || "")}</td></tr>`).join("")}
+      <td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(x.nr)}</td><td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(x.title || "")}${x.archived ? ` <span class="badge">arkiveret</span>` : ""}</td><td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(x.when || "")}</td><td class="r" data-go="/ekstra/${encodeURIComponent(x.id)}">${x.hours ? esc(fmtH(hoursOf(x))) : ""}</td><td data-go="/ekstra/${encodeURIComponent(x.id)}">${esc(extraWho(x))}</td></tr>`).join("")}
     </tbody><tfoot><tr><td></td><td></td><td><b>I alt</b></td><td></td><td class="r"><b>${fmtH(total)}</b></td><td></td></tr></tfoot></table></div>
     <div class="btnrow"><button class="btn primary" id="xPdf">🖨️ PDF af valgte (én A4 pr. seddel)</button></div>
     <div class="btnrow"><button class="btn" id="xPdfFile">Gem valgte som fil (HTML)</button><button class="btn" id="xArchSel">🗄️ Arkivér valgte</button></div>
@@ -648,7 +672,7 @@ async function viewExtraOverview(m) {
   $("#xCsv").onclick = async () => {
     const q = (v) => { v = String(v ?? ""); return /[;"\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v; };
     const rows = [["Nr.", "Overskrift", "Dato/uge", "Timer", "Beskrivelse", "Materialer", "Oprettet af", "Oprettet", "Billeder", "Arkiveret"],
-      ...xs.map((x) => [x.nr, x.title, x.when, x.hours ? fmtH(hoursOf(x)) : "", x.desc, x.mats, x.by, fmtDate(x.created), (x.photos || []).length, x.archived ? fmtDate(x.archivedAt) : ""]), [], ["", "I alt", "", fmtH(total)]];
+      ...xs.map((x) => [x.nr, x.title, x.when, x.hours ? fmtH(hoursOf(x)) : "", x.desc, x.mats, extraWho(x), fmtDate(x.created), (x.photos || []).length, x.archived ? fmtDate(x.archivedAt) : ""]), [], ["", "I alt", "", fmtH(total)]];
     await offerFile(new Blob(["﻿" + rows.map((r) => r.map(q).join(";")).join("\r\n")], { type: "text/csv;charset=utf-8" }), `Ekstraarbejde-SP2-${today()}.csv`, `Oversigt med ${xs.length} sedler og ${fmtH(total)} timer er klar.`);
   };
   const sel = () => xs.filter((x) => picked.has(x.id));
@@ -824,7 +848,7 @@ async function taskToExtra(x, hours = "") {
   const photos = [];
   for (const pid of x.photos || []) { const p = await getPhoto(pid); if (!p) continue; const np = uid(); await dbPut("photos", { id: np, reg: "extra:", blob: p.blob, created: nowIso() }); photos.push(np); }
   const ex = { id: uid(), kind: "extra", nr: nextExtraNr(st), title: x.text, when: `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`, desc: x.note || "", mats: "", hours,
-    photos, by: x.doneBy || MY_NAME || "", created: nowIso(), fromTask: x.id };
+    photos, by: MY_NAME || "", who: x.doneBy || MY_NAME || "", created: nowIso(), fromTask: x.id };
   await saveMat(ex); x.extraId = ex.id; await saveMat(x);
   return ex;
 }
