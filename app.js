@@ -475,7 +475,8 @@ async function buildDalux(opgs, inclDone, progress) {
    Oversigten er låst med en ekstra kode, som Morten vælger på sin telefon (gemmes som hash i den delte liste). */
 const isExtra = (x) => x.kind === "extra" && !x.deleted;
 const extrasOf = (store, withArchived = false) => Object.values(store).filter((x) => isExtra(x) && (withArchived || !x.archived)).sort((a, b) => (b.nr || 0) - (a.nr || 0) || b.created.localeCompare(a.created));
-const nextExtraNr = (store) => Object.values(store).filter((x) => x.kind === "extra").reduce((n, x) => Math.max(n, Number(x.nr) || 0), 0) + 1;
+// Næste nummer = højeste nummer blandt sedler der findes (også arkiverede) + 1. Slettede sedler tæller ikke, så nummeret bliver ledigt igen.
+const nextExtraNr = (store) => Object.values(store).filter((x) => x.kind === "extra" && !x.deleted).reduce((n, x) => Math.max(n, Number(x.nr) || 0), 0) + 1;
 const canEditExtra = (x) => isBoss() || (x.by && normName(x.by) === normName(MY_NAME));
 const hoursOf = (x) => { const v = parseFloat(String(x.hours || "").replace(",", ".")); return isFinite(v) ? v : 0; };
 const fmtH = (h) => (Math.round(h * 100) / 100).toString().replace(".", ",");
