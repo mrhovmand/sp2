@@ -1620,7 +1620,7 @@ function paint() {
 function paintCross(x, dpr) {
   const aiming = !!V.aim, pt = aiming ? V.aimPt : V.cross;
   if (!pt) return;
-  const a = imgToScreen(pt.u, pt.v), R = LOUPE_R, Z = LOUPE_Z, col = aiming && V.snapT !== null ? "#00a35c" : aiming && V.lineHit ? "#0a6cff" : "#e0007a";
+  const a = imgToScreen(pt.u, pt.v), R = LOUPE_R, Z = LOUPE_Z, col = aiming && V.snapT !== null ? "#e07800" : aiming && V.lineHit ? "#0a6cff" : "#12a150";
   const cross = (px, py, r, g) => { x.beginPath(); x.moveTo(px - r, py); x.lineTo(px - g, py); x.moveTo(px + g, py); x.lineTo(px + r, py); x.moveTo(px, py - r); x.lineTo(px, py - g); x.moveTo(px, py + g); x.lineTo(px, py + r); x.stroke(); };
   x.save();
   if (aiming) {
@@ -1811,12 +1811,12 @@ function paintMeasure(x, dpr) {
     x.lineCap = "round"; x.lineJoin = "round";
     const path = () => { x.beginPath(); x.moveTo(P[0].x, P[0].y); for (let i = 1; i < P.length; i++) x.lineTo(P[i].x, P[i].y); x.stroke(); };
     x.strokeStyle = "#fff"; x.lineWidth = 7; path();
-    x.strokeStyle = "#e0007a"; x.lineWidth = 3.5; path();
+    x.strokeStyle = "#12a150"; x.lineWidth = 3.5; path();
   }
   for (const q of V.mp.map((p) => imgToScreen(p.u, p.v))) {
     const r = V.route ? 14 : 22;
-    x.fillStyle = "rgba(224,0,122,.18)"; x.beginPath(); x.arc(q.x, q.y, r, 0, 7); x.fill();
-    x.strokeStyle = "#e0007a"; x.lineWidth = 2.5; x.beginPath(); x.arc(q.x, q.y, r, 0, 7); x.stroke();
+    x.fillStyle = "rgba(18,161,80,.18)"; x.beginPath(); x.arc(q.x, q.y, r, 0, 7); x.fill();
+    x.strokeStyle = "#12a150"; x.lineWidth = 2.5; x.beginPath(); x.arc(q.x, q.y, r, 0, 7); x.stroke();
     x.beginPath(); x.moveTo(q.x - 7, q.y); x.lineTo(q.x + 7, q.y); x.moveTo(q.x, q.y - 7); x.lineTo(q.x, q.y + 7); x.stroke();
   }
   const label = (t, mx, my, size, bg) => {
@@ -1843,7 +1843,7 @@ function paintMeasure(x, dpr) {
   if (V.route && P.length > 2) t += `  · i alt ${fmtM(measuredMeters(pts))}`;
   let mx = (P[0].x + P[1].x) / 2, my = (P[0].y + P[1].y) / 2 - 30;
   if (live) { const A = imgToScreen(V.aimPt.u, V.aimPt.v); mx = A.x; my = A.y - LOUPE_R - 26; if (my < 24) my = A.y + LOUPE_R + 26; }
-  label(t, mx, my, 20, locked ? "rgba(0,120,68,.92)" : "rgba(0,0,0,.82)");
+  label(t, mx, my, 20, locked ? "rgba(200,105,0,.94)" : "rgba(0,0,0,.82)");
 }
 function updateMeasureUI() {
   const btn = $("#vMeasureBtn"), bar = $("#vmeasure");
