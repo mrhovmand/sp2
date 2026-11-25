@@ -588,13 +588,12 @@ async function extraPagesHtml(xs) {
       <div class="xptop"><div><div class="xpproj">Stejlepladsen etape 2</div><div class="xpkind">Ekstraarbejde</div></div>
         <div class="xpnr"><span>Nr.</span><b>${esc(x.nr)}</b></div></div>
       <div class="xptitle">${esc(x.title || "Uden overskrift")}</div>
-      <div class="xpmeta">
-        <div><span>Dato / uge</span><b>${esc(x.when || "")}</b></div>
-        <div><span>Timer</span><b>${x.hours ? esc(fmtH(hoursOf(x))) : ""}</b></div>
-        <div><span>Udført af</span><b>${esc(x.by || "")}</b></div>
-        <div><span>Oprettet</span><b>${esc(new Date(x.created).toLocaleDateString("da-DK"))}</b></div></div>
       <div class="xpsec ${imgs.length ? "grow1" : "grow2"}"><div class="xplabel">Beskrivelse af arbejdet</div><div class="xpfield">${nl(x.desc)}</div></div>
       <div class="xpsec grow1"><div class="xplabel">Materialer</div><div class="xpfield">${nl(x.mats)}</div></div>
+      <div class="xpsec"><div class="xplabel">Timer og dato</div><div class="xpfield xptime">
+        <div><span>Timer</span><b>${x.hours ? esc(fmtH(hoursOf(x))) : ""}</b></div>
+        <div><span>Dato / uge</span><b>${esc(x.when || "")}</b></div>
+        <div><span>Udført af</span><b>${esc(x.by || "")}</b></div></div></div>
       ${imgs.length ? `<div class="xpsec grow2"><div class="xplabel">Billeder</div><div class="xpimgs n${imgs.length}">${imgs.map((u) => `<div><img src="${u}" alt=""></div>`).join("")}</div></div>` : ""}
       <div class="xpfoot"><span>Stejlepladsen etape 2 · Ekstraarbejde nr. ${esc(x.nr)}</span><span>Udskrevet ${new Date().toLocaleDateString("da-DK")}${(x.photos || []).length > 4 ? ` · ${x.photos.length - 4} billede(r) mere i appen` : ""}</span></div>
     </section>`;

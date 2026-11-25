@@ -279,3 +279,8 @@ progress{width:100%;height:18px}
 .xpimgs div{border:.6pt solid #9a9a9a;border-radius:1.5mm;display:flex;align-items:center;justify-content:center;overflow:hidden;min-height:0;padding:1.5mm}
 .xpimgs img{max-width:100%;max-height:100%;object-fit:contain;display:block}
 .xpfoot{display:flex;justify-content:space-between;margin-top:5mm;padding-top:2mm;border-top:.5pt solid #bbb;font-size:7.5pt;color:#888;letter-spacing:.04em}
+.xptime{flex:none;display:grid;grid-template-columns:repeat(3,1fr);padding:0}
+.xptime div{padding:3mm 3.5mm;border-left:.6pt solid #ccc}
+.xptime div:first-child{border-left:0}
+.xptime span{display:block;font-size:7.5pt;letter-spacing:.14em;text-transform:uppercase;color:#777}
+.xptime b{display:block;font-size:12pt;font-weight:600;margin-top:.8mm;min-height:5mm}
