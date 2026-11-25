@@ -86,3 +86,8 @@ Hvis tegningerne bliver revideret: læg de nye PNG-filer i `tegninger/`, og ret 
 ## Nyt i 2.5 – styr på hvad der er i Dalux
 - Når Dalux-pakken er hentet, spørger appen, om registreringerne skal markeres som oprettet i Dalux. Markerede kommer ikke med i næste pakke (medmindre man sætter flueben ved *Medtag også dem, der allerede er oprettet i Dalux*).
 - På boligsiden står **✓ I Dalux** eller **⚠ Ændret efter Dalux** (indholdet er rettet, efter den blev oprettet – ret manglen i Dalux). Inde i registreringen kan markeringen fjernes eller sættes igen.
+
+## Nyt i 2.6
+- **Deadline på opgaver**: inde i opgaven trykkes *Vælg deadline* – en enkel kalender med pile mellem månederne. I listen står kun deadline i den grå linje (orange når den er tæt på, rød når den er overskredet). Hvem der oprettede opgaven, ses inde i opgaven.
+- **Opgaver som ekstraarbejde**: sæt flueben ved *Det er ekstraarbejde* inde i opgaven. Når den krydses af – også direkte i listen – spørger appen "Hvor mange timer har du brugt?" og opretter selv en ekstraarbejdsseddel. Ellers kan man trykke *Overfør til ekstraarbejde*. Opgaven bliver stående, og sedlen lever videre, selvom opgaven slettes.
+- PDF for ekstraarbejde: dato, timer og hvem står på én linje i et bredt felt, fx "28.11.2026 – 2 timer – Tommy".

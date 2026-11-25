@@ -284,3 +284,24 @@ progress{width:100%;height:18px}
 .xptime div:first-child{border-left:0}
 .xptime span{display:block;font-size:7.5pt;letter-spacing:.14em;text-transform:uppercase;color:#777}
 .xptime b{display:block;font-size:12pt;font-weight:600;margin-top:.8mm;min-height:5mm}
+.xpline{flex:none;font-size:12pt;font-weight:600}
+/* Deadline */
+.dl{font-weight:600;color:#555}
+.dl.soon{color:#b26a00}
+.dl.late{color:#c0202a}
+.dlbtn{text-align:left}
+.dlbtn.late{border-color:#c0202a;color:#c0202a}
+.calov{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:12px}
+.calbox{background:#fff;border-radius:16px;padding:12px;width:100%;max-width:380px}
+.calhead{display:flex;justify-content:space-between;align-items:center;font-size:18px;margin-bottom:6px}
+.calhead .btn{width:auto;min-width:48px}
+.calnav{display:flex;justify-content:space-between;align-items:center;margin:4px 0 8px;font-size:19px;text-transform:capitalize}
+.calarrow{width:52px;height:46px;border-radius:12px;border:2px solid var(--line);background:#fff;font-size:28px;line-height:1;cursor:pointer;color:inherit}
+.calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.calwd span{text-align:center;font-size:13px;color:var(--muted);padding:2px 0}
+.calday{height:44px;border-radius:10px;border:1px solid var(--line);background:#fff;font-size:17px;font-weight:600;cursor:pointer;color:inherit;padding:0}
+.calday.past{color:#aaa}
+.calday.today{border:2px solid var(--blue)}
+.calday.sel{background:var(--blue);border-color:var(--blue);color:#fff}
+.xtag{display:inline-block;font-size:12px;font-weight:700;border:1.5px solid #8a5a00;color:#8a5a00;border-radius:6px;padding:0 5px;line-height:17px}
+#tIsExtra.on{border-color:#c98a1b;background:#fff7e6;color:#6b4500}#tIsExtra.on .box{border-color:#c98a1b;background:#c98a1b;color:#fff}

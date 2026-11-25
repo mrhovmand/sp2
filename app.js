@@ -576,6 +576,11 @@ async function viewExtra(m, id) {
     location.replace(x.archived ? "#/ekstra/oversigt" : "#/ekstra");
   };
 }
+// "28/11 – 2 timer – Tommy" (dele uden indhold udelades)
+function extraLine(x) {
+  const h = hoursOf(x);
+  return [x.when || "", x.hours ? `${fmtH(h)} ${h === 1 ? "time" : "timer"}` : "", x.by || ""].filter(Boolean).join(" – ");
+}
 // Én A4-side pr. ekstraarbejde (til print/PDF)
 async function extraPagesHtml(xs) {
   const nl = (t) => esc((t || "").trim()).replace(/\n/g, "<br>");
@@ -590,10 +595,7 @@ async function extraPagesHtml(xs) {
       <div class="xptitle">${esc(x.title || "Uden overskrift")}</div>
       <div class="xpsec ${imgs.length ? "grow1" : "grow2"}"><div class="xplabel">Beskrivelse af arbejdet</div><div class="xpfield">${nl(x.desc)}</div></div>
       <div class="xpsec grow1"><div class="xplabel">Materialer</div><div class="xpfield">${nl(x.mats)}</div></div>
-      <div class="xpsec"><div class="xplabel">Timer og dato</div><div class="xpfield xptime">
-        <div><span>Timer</span><b>${x.hours ? esc(fmtH(hoursOf(x))) : ""}</b></div>
-        <div><span>Dato / uge</span><b>${esc(x.when || "")}</b></div>
-        <div><span>Udført af</span><b>${esc(x.by || "")}</b></div></div></div>
+      <div class="xpsec"><div class="xplabel">Dato, timer og udført af</div><div class="xpfield xpline">${esc(extraLine(x)) || "&nbsp;"}</div></div>
       ${imgs.length ? `<div class="xpsec grow2"><div class="xplabel">Billeder</div><div class="xpimgs n${imgs.length}">${imgs.map((u) => `<div><img src="${u}" alt=""></div>`).join("")}</div></div>` : ""}
       <div class="xpfoot"><span>Stejlepladsen etape 2 · Ekstraarbejde nr. ${esc(x.nr)}</span><span>Udskrevet ${new Date().toLocaleDateString("da-DK")}${(x.photos || []).length > 4 ? ` · ${x.photos.length - 4} billede(r) mere i appen` : ""}</span></div>
     </section>`;
@@ -759,20 +761,109 @@ function tasksCardHtml(store) {
     return `<div class="tline${l.id === me ? " me" : ""}"><span>${esc(l.name)}${l.id === me ? " (dig)" : ""}</span><span class="tn ${n ? "has" : ""}">${n}</span></div>`; }).join("");
   return `<button class="card matcard" data-go="/opgaver"><div class="mattitle"><b>Opgaver</b><span class="count ${total ? "has" : ""}">${total}</span></div><div class="tgrid">${rows}</div></button>`;
 }
+// Deadline (gemmes som ÅÅÅÅ-MM-DD)
+const DAYS = ["søn", "man", "tir", "ons", "tor", "fre", "lør"], MONTHS = ["januar", "februar", "marts", "april", "maj", "juni", "juli", "august", "september", "oktober", "november", "december"];
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const parseYmd = (s) => { const [y, m, d] = String(s).split("-").map(Number); return new Date(y, m - 1, d); };
+function fmtDeadline(s) {
+  if (!s) return ""; const d = parseYmd(s), t = new Date(); t.setHours(0, 0, 0, 0);
+  const diff = Math.round((d - t) / 864e5);
+  const rel = diff === 0 ? "i dag" : diff === 1 ? "i morgen" : diff === -1 ? "i går" : `${DAYS[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
+  return rel;
+}
+const deadlineLate = (x) => x.deadline && !x.done && parseYmd(x.deadline) < new Date(new Date().setHours(0, 0, 0, 0));
+const deadlineSoon = (x) => x.deadline && !x.done && !deadlineLate(x) && (parseYmd(x.deadline) - new Date(new Date().setHours(0, 0, 0, 0))) / 864e5 <= 2;
+// Enkel kalender: store dage, pile til måneder. Svarer med "ÅÅÅÅ-MM-DD", "" (ingen deadline) eller null (annulleret)
+function pickDate(current, title = "Vælg deadline") {
+  return new Promise((resolve) => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let view = current ? parseYmd(current) : new Date(today); view.setDate(1);
+    const ov = document.createElement("div"); ov.className = "calov";
+    const done = (v) => { ov.remove(); resolve(v); };
+    const paint = () => {
+      const y = view.getFullYear(), mo = view.getMonth(), first = (new Date(y, mo, 1).getDay() + 6) % 7, n = new Date(y, mo + 1, 0).getDate();
+      let cells = ""; for (let i = 0; i < first; i++) cells += `<span></span>`;
+      for (let d = 1; d <= n; d++) {
+        const dt = new Date(y, mo, d), v = ymd(dt);
+        cells += `<button class="calday${v === current ? " sel" : ""}${dt.getTime() === today.getTime() ? " today" : ""}${dt < today ? " past" : ""}" data-d="${v}">${d}</button>`;
+      }
+      ov.innerHTML = `<div class="calbox"><div class="calhead"><b>${esc(title)}</b><button class="btn small" data-x>✕</button></div>
+        <div class="calnav"><button class="calarrow" data-m="-1" aria-label="Forrige måned">‹</button><b>${MONTHS[mo]} ${y}</b><button class="calarrow" data-m="1" aria-label="Næste måned">›</button></div>
+        <div class="calgrid calwd"><span>man</span><span>tir</span><span>ons</span><span>tor</span><span>fre</span><span>lør</span><span>søn</span></div>
+        <div class="calgrid">${cells}</div>
+        <div class="btnrow">${current ? `<button class="btn small" data-none>Ingen deadline</button>` : ""}<button class="btn small" data-today>I dag</button></div></div>`;
+    };
+    ov.onclick = (e) => {
+      const t = e.target;
+      if (t === ov || t.closest("[data-x]")) return done(null);
+      const m = t.closest("[data-m]"); if (m) { view.setMonth(view.getMonth() + Number(m.dataset.m)); return paint(); }
+      const d = t.closest("[data-d]"); if (d) return done(d.dataset.d);
+      if (t.closest("[data-none]")) return done("");
+      if (t.closest("[data-today]")) return done(ymd(today));
+    };
+    paint(); document.body.appendChild(ov);
+  });
+}
 const canEditTask = (x) => isBoss() || (x.by && normName(x.by) === normName(MY_NAME));
 function taskRow(x) {
-  const meta = x.done ? `✓ ${esc(x.doneBy || "?")}, ${fmtWhen(x.doneAt)}` : `${x.by ? esc(x.by) + " · " : ""}${fmtWhen(x.created)}`;
-  const extra = `${(x.note || "").trim() ? " · 📝" : ""}${(x.photos || []).length ? ` · 📷 ${x.photos.length}` : ""}`;
+  // Den grå linje: kun deadline (og hvem der krydsede af) – hvem/hvornår den blev oprettet, står inde i opgaven
+  const parts = [];
+  if (x.done) parts.push(`✓ ${esc(x.doneBy || "?")}, ${fmtWhen(x.doneAt)}`);
+  if (x.deadline && !x.done) parts.push(`<span class="dl${deadlineLate(x) ? " late" : deadlineSoon(x) ? " soon" : ""}">⏰ Deadline ${esc(fmtDeadline(x.deadline))}</span>`);
+  if (x.isExtra && !x.extraId) parts.push(`<span class="xtag">Ekstraarbejde</span>`);
+  if ((x.note || "").trim()) parts.push("📝"); if ((x.photos || []).length) parts.push(`📷 ${x.photos.length}`); if (x.extraId) parts.push("➜ ekstraarbejde");
+  const meta = parts.join(" · "), extra = "";
   // Kun firkanten krydser af – teksten åbner opgaven
   return `<div class="trow ${x.done ? "done" : ""}">
     <button class="tbox" data-ttog="${esc(x.id)}" aria-label="${x.done ? "Fjern flueben" : "Kryds af"}"><span class="box">${x.done ? "✓" : ""}</span></button>
-    <button class="ttext" data-topen="${esc(x.id)}"><span class="mattext">${esc(x.text)}<span class="small muted">${meta}${extra}</span></span><span class="chev">›</span></button></div>`;
+    <button class="ttext" data-topen="${esc(x.id)}"><span class="mattext">${esc(x.text)}${meta ? `<span class="small muted">${meta}${extra}</span>` : ""}</span><span class="chev">›</span></button></div>`;
+}
+// Opret ekstraarbejde ud fra en opgave (opgaven bliver stående; sedlen lever sit eget liv)
+async function taskToExtra(x, hours = "") {
+  const st = await metaGet("materials", {}), d = x.doneAt ? new Date(x.doneAt) : new Date();
+  const photos = [];
+  for (const pid of x.photos || []) { const p = await getPhoto(pid); if (!p) continue; const np = uid(); await dbPut("photos", { id: np, reg: "extra:", blob: p.blob, created: nowIso() }); photos.push(np); }
+  const ex = { id: uid(), kind: "extra", nr: nextExtraNr(st), title: x.text, when: `${d.getDate()}.${d.getMonth() + 1}.${d.getFullYear()}`, desc: x.note || "", mats: "", hours,
+    photos, by: x.doneBy || MY_NAME || "", created: nowIso(), fromTask: x.id };
+  await saveMat(ex); x.extraId = ex.id; await saveMat(x);
+  return ex;
+}
+// Lille vindue: "Hvor mange timer?" – svarer med tekst, "" (spring over) eller null (fortryd)
+function askHours(title) {
+  return new Promise((resolve) => {
+    const ov = document.createElement("div"); ov.className = "calov";
+    ov.innerHTML = `<div class="calbox"><div class="calhead"><b>Ekstraarbejde</b></div>
+      <div class="small muted" style="margin-bottom:8px">${esc(title)}</div>
+      <label class="lbl" for="ahIn">Hvor mange timer har du brugt?</label>
+      <input type="text" id="ahIn" inputmode="decimal" placeholder="Fx 1,5" autocomplete="off">
+      <div class="btnrow"><button class="btn primary" data-ok>Gem og kryds af</button></div>
+      <div class="btnrow"><button class="btn small" data-skip>Ved ikke – udfyld senere</button><button class="btn small" data-no>Fortryd</button></div></div>`;
+    const done = (v) => { ov.remove(); resolve(v); };
+    ov.onclick = (e) => {
+      if (e.target.closest("[data-ok]")) { const v = $("#ahIn").value.trim(); if (!v) return $("#ahIn").focus(); return done(v); }
+      if (e.target.closest("[data-skip]")) return done("");
+      if (e.target.closest("[data-no]") || e.target === ov) return done(null);
+    };
+    document.body.appendChild(ov); setTimeout(() => $("#ahIn").focus(), 50);
+    $("#ahIn").onkeydown = (e) => { if (e.key === "Enter") ov.querySelector("[data-ok]").click(); };
+  });
+}
+// Kryds af / fjern flueben. Er opgaven ekstraarbejde, spørges om timer, og sedlen oprettes automatisk.
+async function toggleTaskDone(x) {
+  if (!x.done && x.isExtra && !x.extraId) {
+    const h = await askHours(x.text); if (h === null) return false;
+    x.done = true; x.doneBy = MY_NAME || ""; x.doneAt = nowIso(); await saveMat(x);
+    const ex = await taskToExtra(x, h);
+    toast(`Krydset af og lagt i ekstraarbejde nr. ${ex.nr}${h ? "" : " – timer mangler"}`, 3500);
+    return true;
+  }
+  x.done = !x.done;
+  if (x.done) { x.doneBy = MY_NAME || ""; x.doneAt = nowIso(); } else { x.doneBy = ""; x.doneAt = ""; }
+  await saveMat(x); return true;
 }
 function bindTaskRows(m, store, rerender) {
   m.querySelectorAll("[data-ttog]").forEach((b) => b.onclick = async () => {
-    const x = store[b.dataset.ttog]; x.done = !x.done;
-    if (x.done) { x.doneBy = MY_NAME || ""; x.doneAt = nowIso(); } else { x.doneBy = ""; x.doneAt = ""; }
-    await saveMat(x); rerender();
+    const x = store[b.dataset.ttog]; if (await toggleTaskDone(x)) rerender();
   });
   m.querySelectorAll("[data-topen]").forEach((b) => b.onclick = () => { taskBack = location.hash.slice(1) || "/opgaver"; go("/opgaver/t/" + encodeURIComponent(b.dataset.topen)); });
 }
@@ -852,6 +943,13 @@ async function viewTask(m, id) {
     ${edit ? `<textarea id="tTitle" class="ttitle" rows="2">${esc(x.text)}</textarea>` : `<h1 class="ttitle ro">${esc(x.text)}</h1>`}
     <div class="small muted" style="margin:2px 2px 10px">${x.by ? `Lagt ind af ${esc(x.by)} · ` : ""}${fmtWhen(x.created)}</div>
     <button class="check ${x.done ? "on done" : ""}" id="tDone"><span class="box">${x.done ? "✓" : ""}</span><span>${x.done ? `Udført – ${esc(x.doneBy || "?")}, ${fmtWhen(x.doneAt)}` : "Ikke udført – tryk når den er lavet"}</span></button>
+    ${edit && !x.extraId ? `<button class="check ${x.isExtra ? "on" : ""}" id="tIsExtra" style="margin-top:8px"><span class="box">${x.isExtra ? "✓" : ""}</span><span>Det er ekstraarbejde<span class="small muted" style="display:block;font-weight:400">Når den krydses af, spørger appen om timer og lægger den i ekstraarbejde</span></span></button>` : ""}
+    <div class="btnrow">${x.extraId && store[x.extraId] && !store[x.extraId].deleted
+      ? `<button class="btn" data-go="/ekstra/${encodeURIComponent(x.extraId)}">➜ Overført til ekstraarbejde nr. ${esc(store[x.extraId].nr)} – åbn</button>`
+      : `<button class="btn" id="tToExtra">➜ Overfør til ekstraarbejde</button>`}</div>
+    <label class="lbl">Deadline</label>
+    ${edit ? `<button class="btn dlbtn${deadlineLate(x) ? " late" : ""}" id="tDl">${x.deadline ? `⏰ ${esc(fmtDeadline(x.deadline))} (${esc(parseYmd(x.deadline).toLocaleDateString("da-DK"))}) – tryk for at ændre` : "＋ Vælg deadline (valgfri)"}</button>`
+      : `<div class="small">${x.deadline ? `⏰ ${esc(fmtDeadline(x.deadline))} (${esc(parseYmd(x.deadline).toLocaleDateString("da-DK"))})` : "Ingen deadline"}</div>`}
     <label class="lbl" for="tNote">Beskrivelse / mere info</label>
     <textarea id="tNote" rows="4" placeholder="Fx hvor, hvad der skal bruges, hvem man skal tale med …">${esc(x.note || "")}</textarea>
     <label class="lbl">Billeder (${x.photos.length})</label>
@@ -868,9 +966,16 @@ async function viewTask(m, id) {
   const saveSoon = () => { clearTimeout(t); t = setTimeout(save, 700); };
   const ti = $("#tTitle"); if (ti) ti.oninput = () => { const v = ti.value.replace(/\s+/g, " ").trim(); if (v) { x.text = v; saveSoon(); } };
   $("#tNote").oninput = (e) => { x.note = e.target.value; saveSoon(); };
-  $("#tDone").onclick = async () => {
-    x.done = !x.done; if (x.done) { x.doneBy = MY_NAME || ""; x.doneAt = nowIso(); } else { x.doneBy = ""; x.doneAt = ""; }
-    await save(); viewTask(m, id);
+  $("#tDone").onclick = async () => { await save(); if (await toggleTaskDone(x)) viewTask(m, id); };
+  const tx = $("#tIsExtra"); if (tx) tx.onclick = async () => { x.isExtra = !x.isExtra; await save(); viewTask(m, id); };
+  const dlb = $("#tDl"); if (dlb) dlb.onclick = async () => {
+    const v = await pickDate(x.deadline || ""); if (v === null) return;
+    x.deadline = v; await save(); viewTask(m, id);
+  };
+  const te = $("#tToExtra"); if (te) te.onclick = async () => {
+    if (!(await confirmBox(`Opret ekstraarbejde ud fra "${x.text}"? Opgaven bliver stående her.`, "Overfør"))) return;
+    await save(); const ex = await taskToExtra(x);
+    toast(`Overført som ekstraarbejde nr. ${ex.nr} – udfyld timer og materialer`); go("/ekstra/" + encodeURIComponent(ex.id));
   };
   const tl = $("#tList"); if (tl) tl.onchange = async () => { x.list = tl.value; await save(); setTop("Opgave", listName(store, x.list)); toast(`Flyttet til ${listName(store, x.list)}`); };
   const thumbs = async () => {
