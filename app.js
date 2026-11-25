@@ -578,19 +578,25 @@ async function viewExtra(m, id) {
 }
 // Én A4-side pr. ekstraarbejde (til print/PDF)
 async function extraPagesHtml(xs) {
-  const nl = (t) => esc(t || "").replace(/\n/g, "<br>");
+  const nl = (t) => esc((t || "").trim()).replace(/\n/g, "<br>");
   let h = "";
   for (const x of xs) {
     const imgs = [];
     for (const pid of (x.photos || []).slice(0, 4)) { const p = await getPhoto(pid); if (p) imgs.push(await blobToDataUrl(p.blob)); }
+    // Felterne strækkes, så siden altid er fyldt: med billeder deles pladsen, uden billeder får teksten det hele
     h += `<section class="xp">
-      <div class="xphead"><div><div class="xpsmall">Stejlepladsen etape 2 · Ekstraarbejde</div><h1>Nr. ${esc(x.nr)}${x.title ? " – " + esc(x.title) : ""}</h1></div></div>
-      <table class="xpmeta"><tr><th>Dato/uge</th><td>${esc(x.when || "")}</td><th>Timer</th><td>${x.hours ? esc(fmtH(hoursOf(x))) : ""}</td></tr>
-        <tr><th>Udført af</th><td>${esc(x.by || "")}</td><th>Oprettet</th><td>${fmtDate(x.created)}</td></tr></table>
-      <h2>Beskrivelse</h2><div class="xpbox">${nl(x.desc) || "&nbsp;"}</div>
-      ${x.mats ? `<h2>Materialer</h2><div class="xpbox">${nl(x.mats)}</div>` : ""}
-      ${imgs.length ? `<h2>Billeder</h2><div class="xpimgs n${imgs.length}">${imgs.map((u) => `<img src="${u}" alt="">`).join("")}</div>` : ""}
-      <div class="xpfoot">Udskrevet ${fmtDate(nowIso())}${(x.photos || []).length > 4 ? ` · ${x.photos.length - 4} billede(r) mere i appen` : ""}</div>
+      <div class="xptop"><div><div class="xpproj">Stejlepladsen etape 2</div><div class="xpkind">Ekstraarbejde</div></div>
+        <div class="xpnr"><span>Nr.</span><b>${esc(x.nr)}</b></div></div>
+      <div class="xptitle">${esc(x.title || "Uden overskrift")}</div>
+      <div class="xpmeta">
+        <div><span>Dato / uge</span><b>${esc(x.when || "")}</b></div>
+        <div><span>Timer</span><b>${x.hours ? esc(fmtH(hoursOf(x))) : ""}</b></div>
+        <div><span>Udført af</span><b>${esc(x.by || "")}</b></div>
+        <div><span>Oprettet</span><b>${esc(new Date(x.created).toLocaleDateString("da-DK"))}</b></div></div>
+      <div class="xpsec ${imgs.length ? "grow1" : "grow2"}"><div class="xplabel">Beskrivelse af arbejdet</div><div class="xpfield">${nl(x.desc)}</div></div>
+      <div class="xpsec grow1"><div class="xplabel">Materialer</div><div class="xpfield">${nl(x.mats)}</div></div>
+      ${imgs.length ? `<div class="xpsec grow2"><div class="xplabel">Billeder</div><div class="xpimgs n${imgs.length}">${imgs.map((u) => `<div><img src="${u}" alt=""></div>`).join("")}</div></div>` : ""}
+      <div class="xpfoot"><span>Stejlepladsen etape 2 · Ekstraarbejde nr. ${esc(x.nr)}</span><span>Udskrevet ${new Date().toLocaleDateString("da-DK")}${(x.photos || []).length > 4 ? ` · ${x.photos.length - 4} billede(r) mere i appen` : ""}</span></div>
     </section>`;
   }
   return h;
@@ -660,7 +666,7 @@ async function viewExtraOverview(m) {
   $("#xPdfFile").onclick = async () => {
     const s_ = sel(); if (!s_.length) return toast("Sæt flueben ved de sedler, der skal med");
     const css = [...document.styleSheets].flatMap((s) => { try { return [...s.cssRules].map((r) => r.cssText); } catch { return []; } }).filter((t) => t.startsWith(".xp")).join("\n");
-    const html = `<!DOCTYPE html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ekstraarbejde SP2 ${today()}</title><style>body{margin:0;font-family:Arial,sans-serif}${css}@page{size:A4;margin:14mm}</style></head><body>${await extraPagesHtml(s_)}</body></html>`;
+    const html = `<!DOCTYPE html><html lang="da"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ekstraarbejde SP2 ${today()}</title><style>body{margin:0}${css}@page{size:A4;margin:12mm}</style></head><body>${await extraPagesHtml(s_)}</body></html>`;
     await offerFile(new Blob([html], { type: "text/html" }), `Ekstraarbejde-SP2-${today()}.html`, `${s_.length} sedler er klar. Åbn filen og vælg Udskriv → Gem som PDF.`);
   };
   $("#xArchSel").onclick = async () => {
