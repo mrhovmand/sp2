@@ -75,13 +75,14 @@ const FLOOR_ORDER = ["Kælder", "Stue", "1. sal", "2. sal", "3. sal", "4. sal", 
 const FLOOR_SHORT = { "Kælder": "kl.", "Stue": "st.", "1. sal": "1.", "2. sal": "2.", "3. sal": "3.", "4. sal": "4.", "5. sal": "5.", "Tag": "tag" };
 const TYPES = ["Lampeudtag", "Stikkontakt", "Afbryder", "Netværk", "Generelt", "Andet"];
 const DEFAULT_ROOMS = ["Alle rum", "Køkken/alrum", "Stue", "Soveværelse", "Værelse", "Bad", "Gang", "Entré"];
+const DRAW_DIR = window.SP2_DRAW_DIR || "tegninger"; // boligtegninger, oversigter og signatur (ny mappe pr. revision)
 const UNITS = new Map();      // id -> unit
 const OPG = new Map();        // opgang-id -> {id,b,floors[],units[]}
 const BUILDINGS = window.SP2_BUILDINGS;
 
 (function buildIndex() {
   for (const u of window.SP2_UNITS) {
-    u.real = true; u.img = `tegninger/${u.id}.png`;
+    u.real = true; u.img = `${DRAW_DIR}/${u.id}.png`;
     UNITS.set(u.id, u);
     if (!OPG.has(u.o)) OPG.set(u.o, { id: u.o, b: u.b, units: [], maxFloor: 1 });
     const o = OPG.get(u.o);
@@ -106,8 +107,8 @@ const unitsOn = (opgId, floor) => {
   return list;
 };
 const primaryFloor = (u) => u.f[0];
-const ovImg = (b) => `tegninger/${b}-2.png`;
-const SIG_IMG = "tegninger/signatur.png";
+const ovImg = (b) => `${DRAW_DIR}/${b}-2.png`;
+const SIG_IMG = `${DRAW_DIR}/signatur.png`;
 const PLANS = window.SP2_PLANS || [];
 const ALL_DRAWINGS = () => [...new Set([...[...UNITS.values()].filter((u) => u.img).map((u) => u.img), ...BUILDINGS.map(ovImg), SIG_IMG, ...PLANS.flatMap((p) => [p.img, p.full]), ...SITE.flatMap((d) => [d.src, d.full].filter(Boolean)), ...(ORIENT ? [ORIENT.thumb, ORIENT.img, ORIENT.full] : []), ...Object.values(window.SP2_OPGMAP || {}).map((o) => o.img)])];
 // Etage-/kældertegninger for en opgang og etage
@@ -1142,7 +1143,7 @@ async function viewFloor(m, opgId, floor) {
     const s = stats(regsOf(u.id));
     const span = u.f.length > 1 && primaryFloor(u) !== floor ? ` · (registreres samlet, start ${primaryFloor(u)})` : "";
     h += `<button class="row" data-go="/u/${encodeURIComponent(u.id)}">
-      <div class="main"><div class="name">${esc(unitName(u))} ${isProposed(u) ? `<span class="badge b-prop">foreslået</span>` : ""}</div>
+      <div class="main"><div class="name">${esc(unitName(u))} ${u.gone ? `<span class="badge">udgået</span>` : isProposed(u) ? `<span class="badge b-prop">foreslået</span>` : ""}</div>
       <div class="sub">${u.real ? `Side ${esc(u.id)} · ${esc(u.k)}${span}` : "Uden boligtegning"}</div></div>
       ${s.dev ? `<span class="badge b-afv">${s.dev} afv.</span>` : ""}<span class="count ${s.n ? "has" : ""}">${s.n}</span><span class="chev">›</span></button>`;
   }
@@ -1159,6 +1160,7 @@ async function viewUnit(m, unitId) {
   const regs = regsOf(unitId);
   let h = `<div class="btnrow"><button class="btn primary" data-go="/d/new/${encodeURIComponent(unitId)}">＋ Ny registrering</button></div>
     ${drawBtn("uthumb", `<canvas id="uThumb"></canvas><span class="uthumbtxt">Tryk for stor tegning · zoom og mål</span>`, unitDraw(u), { unit: u.id })}`;
+  if (u.gone) h += `<div class="card small">⚠️ Boligen er udgået i den nye revision af tegningerne – arealet er nu erhverv (se 👥 på etagen).</div>`;
   if (u.real) {
     h += `<div class="card"><div><b>Navn:</b> ${esc(unitName(u))} ${isProposed(u) ? `<span class="badge b-prop">foreslået</span>` : ""}</div>
       <div class="small muted">Tegningen viser ikke tv./th. – tjek på stedet og ret navnet hvis det er forkert.</div>
@@ -1473,7 +1475,7 @@ async function viewMenu(m) {
     </div>
     <h2>Om</h2>
     <div class="card small">${APP_NAME} · version <b id="mVer">…</b><br>
-      ${REGS.size} registreringer i alt.<br>Tegninger: Artelia N930 (I1, J1, J2, K1, K3) og N931 rev. 1 (F1, F2, F3, F5, F6).
+      ${REGS.size} registreringer i alt.<br>Tegninger: Artelia ${esc(window.SP2_DRAW_REV || "N930 og N931")}.
       <div class="btnrow"><button class="btn small" id="mUpd">Søg efter ny version</button></div></div>`;
   swVersion().then((v) => { const e = $("#mVer"); if (e) e.textContent = v || "ukendt"; });
   $("#mHent").onclick = downloadAll;
